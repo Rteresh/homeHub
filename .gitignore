@@ -2,3 +2,6 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+agents/
+AGENT_DEVELOPMENT_REQUIREMENTS.md  
+AGENTS.md
