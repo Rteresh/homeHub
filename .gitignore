@@ -13,3 +13,6 @@ agents/
 AGENT_DEVELOPMENT_REQUIREMENTS.md  
 AGENTS.md
 PROJECT_SPEC.md
+.gitignore
+ARCHUTECTURE.md
+pyproject.toml
