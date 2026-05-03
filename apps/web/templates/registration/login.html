@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}HomeHub — вход{% endblock %}
+
+{% block head %}
+  <style>
+    .login-shell { min-height: calc(100vh - 130px); display: grid; place-items: center; }
+    .login-panel { width: min(420px, 100%); }
+    .login-form { display: grid; gap: 14px; }
+    .login-form label { color: var(--muted); }
+    .login-form input { width: 100%; }
+    .error { color: var(--danger); }
+    .telegram-note { margin: 0 0 18px; color: var(--muted); }
+    .divider { margin: 18px 0; border: 0; border-top: 1px solid var(--line); }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="login-shell">
+    <section class="panel login-panel">
+      <h1>Вход</h1>
+      <p class="telegram-note">Для быстрого входа откройте бота в Telegram и отправьте команду /login.</p>
+      {% if form.errors %}
+        <p class="error">Не удалось войти с указанными данными.</p>
+      {% endif %}
+      <hr class="divider">
+      <form class="login-form" method="post">
+        {% csrf_token %}
+        <div>
+          <label for="{{ form.username.id_for_label }}">Пользователь</label>
+          {{ form.username }}
+        </div>
+        <div>
+          <label for="{{ form.password.id_for_label }}">Пароль</label>
+          {{ form.password }}
+        </div>
+        <button type="submit">Войти</button>
+      </form>
+    </section>
+  </div>
+{% endblock %}

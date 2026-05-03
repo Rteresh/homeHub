@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}HomeHub — просмотр медиа{% endblock %}
+
+{% block head %}
+  <style>
+    .viewer-shell { min-height: calc(100vh - 106px); display: grid; grid-template-rows: auto 1fr auto; gap: 14px; }
+    .viewer-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .viewer-title { min-width: 0; }
+    .viewer-title h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .viewer-title p { margin: 4px 0 0; color: var(--muted); }
+    .viewer-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .viewer-stage { min-height: 0; display: grid; grid-template-columns: 48px minmax(0, 1fr) 48px; align-items: center; gap: 12px; background: #111318; border-radius: 8px; padding: 12px; }
+    .viewer-media { min-height: min(68vh, 720px); display: grid; place-items: center; overflow: hidden; }
+    .viewer-media img, .viewer-media video { max-width: 100%; max-height: 76vh; display: block; border-radius: 4px; object-fit: contain; background: #050607; }
+    .viewer-nav { width: 48px; height: 48px; border-radius: 50%; border-color: rgba(255, 255, 255, 0.38); background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 26px; text-decoration: none; }
+    .viewer-nav.disabled { opacity: 0.24; pointer-events: none; }
+    .thumb-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+    .thumb { position: relative; width: 76px; height: 76px; flex: 0 0 76px; overflow: hidden; border: 2px solid transparent; border-radius: 6px; background: #e7ebf0; }
+    .thumb.active { border-color: var(--primary); }
+    .thumb img, .thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .thumb-badge { position: absolute; right: 4px; top: 4px; padding: 1px 5px; border-radius: 999px; background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 11px; }
+    @media (max-width: 760px) {
+      .viewer-shell { min-height: auto; }
+      .viewer-top { align-items: flex-start; flex-direction: column; }
+      .viewer-stage { grid-template-columns: 40px minmax(0, 1fr) 40px; padding: 8px; gap: 8px; }
+      .viewer-media { min-height: 52vh; }
+      .viewer-nav { width: 40px; height: 40px; font-size: 22px; }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <section class="viewer-shell">
+    <div class="viewer-top">
+      <div class="viewer-title">
+        <h1>{{ media_file.original_name }}</h1>
+        <p>{{ media_file.created_at|date:"d.m.Y H:i" }} · {{ media_file.get_category_display }}</p>
+      </div>
+      <div class="viewer-actions">
+        <a class="button secondary" href="{% url 'media-library' %}">Медиатека</a>
+        <a class="button" href="{% url 'file-download' media_file.public_id %}">Скачать</a>
+      </div>
+    </div>
+
+    <div class="viewer-stage">
+      {% if previous_media %}
+        <a class="button viewer-nav" href="{% url 'media-detail' previous_media.public_id %}" aria-label="Предыдущее медиа">‹</a>
+      {% else %}
+        <span class="button viewer-nav disabled">‹</span>
+      {% endif %}
+
+      <div class="viewer-media">
+        {% if media_file.category == "video" %}
+          <video src="{% url 'file-preview' media_file.public_id %}" controls autoplay playsinline></video>
+        {% else %}
+          <img src="{% url 'file-preview' media_file.public_id %}" alt="{{ media_file.original_name }}">
+        {% endif %}
+      </div>
+
+      {% if next_media %}
+        <a class="button viewer-nav" href="{% url 'media-detail' next_media.public_id %}" aria-label="Следующее медиа">›</a>
+      {% else %}
+        <span class="button viewer-nav disabled">›</span>
+      {% endif %}
+    </div>
+
+    {% if media_strip %}
+      <div class="thumb-strip" aria-label="Соседние медиа">
+        {% for item in media_strip %}
+          <a class="thumb {% if item.pk == media_file.pk %}active{% endif %}" href="{% url 'media-detail' item.public_id %}" title="{{ item.original_name }}">
+            {% if item.category == "video" %}
+              <video src="{% url 'file-preview' item.public_id %}" muted playsinline preload="metadata"></video>
+              <span class="thumb-badge">Видео</span>
+            {% else %}
+              <img src="{% url 'file-preview' item.public_id %}" alt="{{ item.original_name }}">
+              {% if item.mime_type == "image/gif" %}
+                <span class="thumb-badge">GIF</span>
+              {% endif %}
+            {% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+{% endblock %}

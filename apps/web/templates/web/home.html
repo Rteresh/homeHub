@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}HomeHub — главная{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Главная</h1>
+    <a class="button" href="{% url 'file-upload' %}">Загрузить файл</a>
+  </div>
+
+  <section class="panel">
+    <h2>Файловое ядро</h2>
+    <p>Первый рабочий раздел HomeHub уже принимает файлы через веб-интерфейс и хранит метаданные в PostgreSQL.</p>
+  </section>
+{% endblock %}
+

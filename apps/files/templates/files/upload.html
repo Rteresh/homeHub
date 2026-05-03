@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}HomeHub — загрузка файла{% endblock %}
+
+{% block head %}
+  <style>
+    .upload-form { display: grid; gap: 16px; max-width: 560px; }
+    .field { display: grid; gap: 6px; }
+    .field label { color: var(--muted); }
+    .field input, .field select { width: 100%; }
+    .form-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .errorlist { margin: 0; padding-left: 18px; color: var(--danger); }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Загрузка файла</h1>
+  </div>
+
+  <section class="panel">
+    <form class="upload-form" method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      <div class="field">
+        {{ form.file.label_tag }}
+        {{ form.file }}
+        {{ form.file.errors }}
+      </div>
+      <div class="field">
+        {{ form.category.label_tag }}
+        {{ form.category }}
+        {{ form.category.errors }}
+      </div>
+      <div class="form-actions">
+        <button type="submit">Загрузить</button>
+        <a class="button secondary" href="{% url 'file-list' %}">К списку</a>
+      </div>
+    </form>
+  </section>
+{% endblock %}
+
