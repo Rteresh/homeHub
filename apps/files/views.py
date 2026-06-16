@@ -17,6 +17,13 @@ from apps.files.permissions import FileAccessService
 from apps.files.services import BulkFileActionService, FileIngestionService, FileQueryService
 from apps.files.storage import LocalFileStorage, StoragePathError
 
+# Категории, которые показываются в медиатеке и отдаются через inline preview.
+MEDIA_LIBRARY_CATEGORIES = (
+    FileAsset.Category.PHOTO,
+    FileAsset.Category.VIDEO,
+    FileAsset.Category.AUDIO,
+)
+
 
 @method_decorator(login_required, name="dispatch")
 class FileListView(ListView):
@@ -49,7 +56,7 @@ class MediaLibraryView(ListView):
     def get_queryset(self):
         return (
             FileQueryService.visible_to(self.request.user)
-            .filter(category__in=[FileAsset.Category.PHOTO, FileAsset.Category.VIDEO], status=FileAsset.Status.READY)
+            .filter(category__in=MEDIA_LIBRARY_CATEGORIES, status=FileAsset.Status.READY)
             .order_by("-created_at", "-id")
         )
 
@@ -70,7 +77,7 @@ class MediaDetailView(DetailView):
     def get_queryset(self):
         return (
             FileQueryService.visible_to(self.request.user)
-            .filter(category__in=[FileAsset.Category.PHOTO, FileAsset.Category.VIDEO], status=FileAsset.Status.READY)
+            .filter(category__in=MEDIA_LIBRARY_CATEGORIES, status=FileAsset.Status.READY)
             .order_by("-created_at", "-id")
         )
 
@@ -167,7 +174,7 @@ def preview_file(request, public_id):
     asset = get_object_or_404(FileAsset, public_id=public_id)
     if not FileAccessService.can_view(request.user, asset):
         raise PermissionDenied("Недостаточно прав для просмотра файла.")
-    if not asset.is_ready or asset.category not in {FileAsset.Category.PHOTO, FileAsset.Category.VIDEO}:
+    if not asset.is_ready or asset.category not in MEDIA_LIBRARY_CATEGORIES:
         raise Http404("Файл недоступен для предпросмотра.")
 
     storage = LocalFileStorage()

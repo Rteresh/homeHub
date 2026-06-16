@@ -4,7 +4,7 @@ from pathlib import Path
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
-from bot.routers.album import main_keyboard
+from bot.routers.album import HELP_BUTTON, main_keyboard
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.urls import reverse
@@ -29,23 +29,41 @@ logger = logging.getLogger(__name__)
 
 
 @router.message(Command("start", "help"))
+@router.message(F.text.casefold() == HELP_BUTTON.casefold())
 async def help_command(message: Message, django_user) -> None:
-    """Отправляет краткую справку по командам и форматам данных, которые бот сохраняет в медиатеку."""
+    """Отправляет справку по командам, кнопкам и сценариям использования бота."""
+    await message.answer(build_help_text(), reply_markup=main_keyboard())
+
+
+def build_help_text() -> str:
+    """Собирает текст справки: команды, кнопки и инструкция по загрузке файлов в HomeHub."""
     limit_hint = (
-        "Без Local Bot API Telegram ограничивает скачивание файлов 20 МБ.\n"
-        "Большие файлы можно загрузить через сайт: /files/upload/\n"
+        "Лимит Telegram Bot API — 20 МБ на файл. "
+        "Большие файлы бот не скачает и ответит на ваше сообщение — сохраните их вручную "
+        "и загрузите через сайт: /files/upload/\n"
     )
     if settings.TELEGRAM_LOCAL_MODE:
-        limit_hint = "Включён Local Bot API: бот принимает файлы больше 20 МБ.\n"
+        limit_hint = (
+            "Включён Local Bot API: бот принимает файлы больше 20 МБ (до ~2 ГБ).\n"
+        )
 
-    await message.answer(
-        "HomeHub готов принимать фото, видео, GIF и файлы.\n"
+    return (
+        "HomeHub — домашнее хранилище файлов через Telegram и веб.\n\n"
+        "Как пользоваться:\n"
+        "1. Отправьте фото, видео, GIF, аудио, голосовое или документ — бот сохранит файл в медиатеку.\n"
+        "2. Кнопка «Альбом» — выберите альбом для новых загрузок или режим «Без альбома».\n"
+        "3. На каждый файл бот отвечает: «Сохранено…» или «Не могу скачать…» — так видно, "
+        "что принято, а что нужно загрузить вручную.\n\n"
+        "Команды:\n"
+        "/start, /help — эта справка\n"
+        "/login — одноразовая ссылка для входа на сайт (10 минут)\n"
+        "/media — последние 10 фото и видео из медиатеки\n"
+        "/dictionary — следующие 10 статей толкового словаря\n\n"
+        "Кнопки:\n"
+        "«Словарь» — то же, что /dictionary\n"
+        "«Альбом» — выбор или создание альбома для загрузок\n"
+        "«Help» — эта справка\n\n"
         f"{limit_hint}"
-        "/login — быстрая ссылка для входа на сайт\n"
-        "/media — последние медиа из вашей медиатеки\n"
-        "/dictionary или кнопка «Словарь» — 10 статей толкового словаря\n"
-        "Кнопка «Альбом» — выбор или создание альбома для загрузок",
-        reply_markup=main_keyboard(),
     )
 
 
@@ -78,7 +96,7 @@ async def media_command(message: Message, django_user) -> None:
     await message.answer(text)
 
 
-@router.message(F.photo | F.video | F.animation | F.document)
+@router.message(F.photo | F.video | F.animation | F.audio | F.voice | F.document)
 async def ingest_media(message: Message, bot, django_user, telegram_profile) -> None:
     """Скачивает Telegram-файл во временный каталог и сохраняет его в приватное хранилище HomeHub."""
     payload = extract_media_payload(message)
@@ -92,7 +110,7 @@ async def ingest_media(message: Message, bot, django_user, telegram_profile) -> 
         return
 
     if not settings.TELEGRAM_LOCAL_MODE and is_file_too_large_for_standard_api(payload.file_size):
-        await message.answer(too_large_message(payload))
+        await message.reply(too_large_message(payload))
         return
 
     progress = await message.answer("Сохраняю файл, подождите...")
@@ -125,7 +143,11 @@ async def ingest_media(message: Message, bot, django_user, telegram_profile) -> 
             message.from_user.id if message.from_user else None,
             payload.file_size,
         )
-        await progress.edit_text(too_large_message(payload))
+        try:
+            await progress.delete()
+        except Exception:
+            logger.debug("Не удалось удалить сообщение о прогрессе", exc_info=True)
+        await message.reply(too_large_message(payload))
         return
     except TelegramDownloadFailed as exc:
         logger.warning(
@@ -155,11 +177,10 @@ async def ingest_media(message: Message, bot, django_user, telegram_profile) -> 
 
 
 def too_large_message(payload: MediaPayload) -> str:
-    """Формирует понятный ответ, когда Telegram не отдаёт файл боту из-за лимита 20 МБ."""
+    """Формирует ответ-реплай на исходное сообщение: файл больше лимита 20 МБ Bot API."""
     size_label = format_file_size(payload.file_size)
     return (
-        f"Файл «{payload.original_name}» ({size_label}) слишком большой для стандартного Telegram API "
-        f"(лимит 20 МБ).\n"
-        "Загрузите его через сайт: /files/upload/\n"
-        "Или включите Local Bot API в настройках HomeHub."
+        f"Не могу скачать «{payload.original_name}» ({size_label}): "
+        f"лимит Telegram Bot API — 20 МБ.\n"
+        "Сохраните файл вручную и загрузите через сайт: /files/upload/"
     )

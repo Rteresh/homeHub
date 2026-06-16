@@ -13,12 +13,19 @@
     .viewer-stage { min-height: 0; display: grid; grid-template-columns: 48px minmax(0, 1fr) 48px; align-items: center; gap: 12px; background: #111318; border-radius: 8px; padding: 12px; }
     .viewer-media { min-height: min(68vh, 720px); display: grid; place-items: center; overflow: hidden; }
     .viewer-media img, .viewer-media video { max-width: 100%; max-height: 76vh; display: block; border-radius: 4px; object-fit: contain; background: #050607; }
+    .viewer-media:fullscreen { width: 100%; height: 100%; background: #000; display: grid; place-items: center; }
+    .viewer-media:fullscreen img, .viewer-media:fullscreen video { max-width: 100%; max-height: 100%; border-radius: 0; }
+    .viewer-media:fullscreen .viewer-audio-panel { width: min(90vw, 640px); }
+    .viewer-media audio { width: min(100%, 640px); display: block; }
+    .viewer-audio-panel { width: min(100%, 640px); padding: 28px 24px; border-radius: 8px; background: #050607; color: #fff; text-align: center; }
+    .viewer-audio-panel p { margin: 0 0 16px; color: rgba(255, 255, 255, 0.72); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .viewer-nav { width: 48px; height: 48px; border-radius: 50%; border-color: rgba(255, 255, 255, 0.38); background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 26px; text-decoration: none; }
     .viewer-nav.disabled { opacity: 0.24; pointer-events: none; }
     .thumb-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
     .thumb { position: relative; width: 76px; height: 76px; flex: 0 0 76px; overflow: hidden; border: 2px solid transparent; border-radius: 6px; background: #e7ebf0; }
     .thumb.active { border-color: var(--primary); }
     .thumb img, .thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .thumb-audio { display: grid; place-items: center; width: 100%; height: 100%; font-size: 24px; background: #2f3542; color: #fff; }
     .thumb-badge { position: absolute; right: 4px; top: 4px; padding: 1px 5px; border-radius: 999px; background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 11px; }
     @media (max-width: 760px) {
       .viewer-shell { min-height: auto; }
@@ -31,7 +38,11 @@
 {% endblock %}
 
 {% block content %}
-  <section class="viewer-shell">
+  <section
+    class="viewer-shell"
+    data-nav-prev="{% if previous_media %}{% url 'media-detail' previous_media.public_id %}{% endif %}"
+    data-nav-next="{% if next_media %}{% url 'media-detail' next_media.public_id %}{% endif %}"
+  >
     <div class="viewer-top">
       <div class="viewer-title">
         <h1>{{ media_file.original_name }}</h1>
@@ -53,6 +64,11 @@
       <div class="viewer-media">
         {% if media_file.category == "video" %}
           <video src="{% url 'file-preview' media_file.public_id %}" controls autoplay playsinline></video>
+        {% elif media_file.category == "audio" %}
+          <div class="viewer-audio-panel">
+            <p>{{ media_file.original_name }}</p>
+            <audio src="{% url 'file-preview' media_file.public_id %}" controls autoplay></audio>
+          </div>
         {% else %}
           <img src="{% url 'file-preview' media_file.public_id %}" alt="{{ media_file.original_name }}">
         {% endif %}
@@ -75,6 +91,9 @@
             {% elif item.category == "video" %}
               <video src="{% url 'file-preview' item.public_id %}" muted playsinline preload="metadata"></video>
               <span class="thumb-badge">Видео</span>
+            {% elif item.category == "audio" %}
+              <span class="thumb-audio" aria-hidden="true">♪</span>
+              <span class="thumb-badge">Аудио</span>
             {% else %}
               <img src="{% url 'file-preview' item.public_id %}" alt="{{ item.original_name }}">
               {% if item.mime_type == "image/gif" %}
@@ -86,4 +105,77 @@
       </div>
     {% endif %}
   </section>
+
+  <script>
+    (function () {
+      const shell = document.querySelector(".viewer-shell");
+      if (!shell) {
+        return;
+      }
+
+      const prevUrl = shell.dataset.navPrev || "";
+      const nextUrl = shell.dataset.navNext || "";
+      const viewerMedia = shell.querySelector(".viewer-media");
+      const playable = shell.querySelector(".viewer-media video, .viewer-media audio");
+
+      function blocksShortcuts(target) {
+        if (!target) {
+          return false;
+        }
+        const tag = target.tagName;
+        return (
+          tag === "INPUT"
+          || tag === "TEXTAREA"
+          || tag === "SELECT"
+          || tag === "BUTTON"
+          || tag === "A"
+          || target.isContentEditable
+        );
+      }
+
+      function toggleFullscreen() {
+        if (!viewerMedia || !viewerMedia.requestFullscreen) {
+          return;
+        }
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else {
+          viewerMedia.requestFullscreen();
+        }
+      }
+
+      document.addEventListener("keydown", function (event) {
+        if (blocksShortcuts(event.target)) {
+          return;
+        }
+
+        if (event.key === "ArrowLeft" && prevUrl) {
+          event.preventDefault();
+          window.location.assign(prevUrl);
+          return;
+        }
+
+        if (event.key === "ArrowRight" && nextUrl) {
+          event.preventDefault();
+          window.location.assign(nextUrl);
+          return;
+        }
+
+        if (event.key === "f" || event.key === "F") {
+          event.preventDefault();
+          toggleFullscreen();
+          return;
+        }
+
+        if ((event.key === " " || event.code === "Space") && playable) {
+          event.preventDefault();
+          if (playable.paused) {
+            playable.play();
+          } else {
+            playable.pause();
+          }
+        }
+      });
+    })();
+  </script>
 {% endblock %}

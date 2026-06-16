@@ -34,7 +34,7 @@ class MediaPayload:
 
 
 def extract_media_payload(message: Message) -> MediaPayload | None:
-    """Достаёт file_id, имя, MIME и file_size из фото, видео, GIF или документа Telegram."""
+    """Достаёт file_id, имя, MIME и file_size из фото, видео, GIF, аудио, голосового или документа Telegram."""
     if message.photo:
         photo = message.photo[-1]
         return MediaPayload(
@@ -58,6 +58,21 @@ def extract_media_payload(message: Message) -> MediaPayload | None:
             original_name=Path(name).name,
             mime_type=message.animation.mime_type or "image/gif",
             file_size=message.animation.file_size,
+        )
+    if message.audio:
+        name = message.audio.file_name or f"telegram_audio_{message.message_id}.mp3"
+        return MediaPayload(
+            file_id=message.audio.file_id,
+            original_name=Path(name).name,
+            mime_type=message.audio.mime_type or "audio/mpeg",
+            file_size=message.audio.file_size,
+        )
+    if message.voice:
+        return MediaPayload(
+            file_id=message.voice.file_id,
+            original_name=f"telegram_voice_{message.message_id}.ogg",
+            mime_type=message.voice.mime_type or "audio/ogg",
+            file_size=message.voice.file_size,
         )
     if message.document:
         name = message.document.file_name or f"telegram_file_{message.message_id}"

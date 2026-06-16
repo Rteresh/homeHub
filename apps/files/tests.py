@@ -362,3 +362,52 @@ class BulkMediaActionTests(TestCase):
         self.client.force_login(self.owner)
         response = self.client.post(reverse("media-bulk-delete"), {"public_ids": []})
         self.assertEqual(response.status_code, 400)
+
+
+class AudioPreviewTests(TestCase):
+    def test_owner_can_preview_audio_inline(self):
+        with TemporaryDirectory() as tmp_dir:
+            with override_settings(HOMEHUB_STORAGE_ROOT=Path(tmp_dir)):
+                user = get_user_model().objects.create_user(username="owner", password="password")
+                storage = LocalFileStorage(root=Path(tmp_dir))
+                relative_path = storage.build_upload_path(user.id, "track.mp3")
+                file_path = storage.resolve_private_path(relative_path)
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_bytes(b"fake-mp3")
+                asset = FileAsset.objects.create(
+                    owner=user,
+                    original_name="track.mp3",
+                    storage_path=relative_path,
+                    mime_type="audio/mpeg",
+                    category=FileAsset.Category.AUDIO,
+                    status=FileAsset.Status.READY,
+                    size_bytes=8,
+                )
+                self.client.force_login(user)
+
+                response = self.client.get(reverse("file-preview", kwargs={"public_id": asset.public_id}))
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response["Content-Type"], "audio/mpeg")
+                self.assertIn('inline; filename="track.mp3"', response["Content-Disposition"])
+                self.assertEqual(b"".join(response.streaming_content), b"fake-mp3")
+
+    def test_audio_appears_in_media_library(self):
+        with TemporaryDirectory() as tmp_dir:
+            with override_settings(HOMEHUB_STORAGE_ROOT=Path(tmp_dir)):
+                user = get_user_model().objects.create_user(username="owner", password="password")
+                FileAsset.objects.create(
+                    owner=user,
+                    original_name="voice.ogg",
+                    storage_path="uploads/voice.ogg",
+                    mime_type="audio/ogg",
+                    category=FileAsset.Category.AUDIO,
+                    status=FileAsset.Status.READY,
+                )
+                self.client.force_login(user)
+
+                response = self.client.get(reverse("media-library"))
+
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "voice.ogg")
+                self.assertContains(response, "Аудио")

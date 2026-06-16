@@ -11,6 +11,7 @@ from apps.files.models import Album
 router = Router()
 
 ALBUM_BUTTON = "Альбом"
+HELP_BUTTON = "Help"
 NO_ALBUM_BUTTON = "Без альбома"
 SELECT_ALBUM_BUTTON = "Выбрать альбом"
 CREATE_ALBUM_BUTTON = "Создать альбом"
@@ -24,10 +25,11 @@ class CreateAlbumStates(StatesGroup):
 
 
 def main_keyboard() -> ReplyKeyboardMarkup:
-    """Создаёт постоянную клавиатуру Telegram с быстрым доступом к словарю и альбомам."""
+    """Создаёт постоянную клавиатуру Telegram с быстрым доступом к словарю, альбомам и справке."""
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Словарь"), KeyboardButton(text=ALBUM_BUTTON)],
+            [KeyboardButton(text=HELP_BUTTON)],
         ],
         resize_keyboard=True,
         input_field_placeholder="Выберите действие",

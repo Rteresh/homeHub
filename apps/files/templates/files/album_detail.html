@@ -9,6 +9,7 @@
     .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 4px; }
     .media-tile { position: relative; aspect-ratio: 1; overflow: hidden; background: #e7ebf0; color: #fff; text-decoration: none; }
     .media-tile img, .media-tile video { width: 100%; height: 100%; display: block; object-fit: cover; pointer-events: none; }
+    .media-audio-preview { display: grid; place-items: center; width: 100%; height: 100%; font-size: 42px; line-height: 1; background: linear-gradient(145deg, #2f3542, #1a1f2b); color: #fff; pointer-events: none; }
     .file-tile { position: relative; aspect-ratio: 1; display: grid; place-content: center; gap: 6px; padding: 8px; text-align: center; color: var(--text); background: var(--surface); border: 1px solid var(--line); text-decoration: none; }
     .file-tile-label { font-size: 12px; color: var(--muted); pointer-events: none; }
     .file-tile-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
@@ -43,7 +44,7 @@
 
     <div class="media-grid selectable-grid" data-selectable-grid>
       {% for file in album_files %}
-        {% if file.category == "photo" or file.category == "video" %}
+        {% if file.category == "photo" or file.category == "video" or file.category == "audio" %}
           <a
             class="media-tile selectable-tile"
             href="{% url 'media-detail' file.public_id %}"
@@ -58,6 +59,9 @@
             {% elif file.category == "video" %}
               <video src="{% url 'file-preview' file.public_id %}" muted playsinline preload="metadata"></video>
               <span class="media-badge">Видео</span>
+            {% elif file.category == "audio" %}
+              <span class="media-audio-preview" aria-hidden="true">♪</span>
+              <span class="media-badge">Аудио</span>
             {% else %}
               <img src="{% url 'file-preview' file.public_id %}" alt="{{ file.original_name }}">
               {% if file.mime_type == "image/gif" %}
