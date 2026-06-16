@@ -8,22 +8,32 @@
     .media-count { color: var(--muted); }
     .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 4px; }
     .media-tile { position: relative; aspect-ratio: 1; overflow: hidden; background: #e7ebf0; color: #fff; text-decoration: none; }
-    .media-tile img, .media-tile video { width: 100%; height: 100%; display: block; object-fit: cover; }
-    .media-badge { position: absolute; right: 8px; top: 8px; min-height: 24px; padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.58); font-size: 12px; line-height: 20px; }
-    .media-meta { position: absolute; left: 0; right: 0; bottom: 0; padding: 22px 8px 8px; background: linear-gradient(to top, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0)); font-size: 12px; }
+    .media-tile img, .media-tile video { width: 100%; height: 100%; display: block; object-fit: cover; pointer-events: none; }
+    .media-badge { position: absolute; right: 8px; top: 8px; min-height: 24px; padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.58); font-size: 12px; line-height: 20px; color: #fff; pointer-events: none; }
+    .media-meta { position: absolute; left: 0; right: 0; bottom: 0; padding: 22px 8px 8px; background: linear-gradient(to top, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0)); font-size: 12px; color: #fff; pointer-events: none; }
     .media-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     @media (max-width: 760px) {
       .media-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .media-toolbar { align-items: flex-start; flex-direction: column; }
     }
   </style>
+  {% include "files/includes/media_selection_assets.html" %}
 {% endblock %}
 
 {% block content %}
   <div class="page-header">
     <h1>Медиатека</h1>
-    <a class="button" href="{% url 'file-upload' %}">Загрузить</a>
+    <div class="page-header-actions">
+      {% if media_files %}
+        <button type="button" class="button secondary" id="enter-selection-mode">Выбрать</button>
+      {% endif %}
+      <a class="button" href="{% url 'file-upload' %}">Загрузить</a>
+    </div>
   </div>
+
+  {% if media_files %}
+    {% include "files/includes/media_selection_bar.html" %}
+  {% endif %}
 
   <div class="media-toolbar">
     <div class="media-count">Фото, видео и GIF отсортированы по дате: новые сверху.</div>
@@ -31,10 +41,20 @@
   </div>
 
   {% if media_files %}
-    <div class="media-grid">
+    <div class="media-grid selectable-grid" data-selectable-grid>
       {% for file in media_files %}
-        <a class="media-tile" href="{% url 'media-detail' file.public_id %}" title="{{ file.original_name }}">
-          {% if file.category == "video" %}
+        <a
+          class="media-tile selectable-tile"
+          href="{% url 'media-detail' file.public_id %}"
+          data-public-id="{{ file.public_id }}"
+          data-can-delete="{% if file.owner_id == request.user.id or request.user.is_staff %}true{% else %}false{% endif %}"
+          title="{{ file.original_name }}"
+        >
+          <span class="select-check" aria-hidden="true">✓</span>
+          {% if file.category == "video" and file.poster_path %}
+            <img src="{% url 'file-poster' file.public_id %}" alt="{{ file.original_name }}">
+            <span class="media-badge">Видео</span>
+          {% elif file.category == "video" %}
             <video src="{% url 'file-preview' file.public_id %}" muted playsinline preload="metadata"></video>
             <span class="media-badge">Видео</span>
           {% else %}
@@ -50,6 +70,7 @@
         </a>
       {% endfor %}
     </div>
+    {% include "files/includes/media_selection_script.html" %}
   {% else %}
     <div class="empty">В медиатеке пока нет фото, видео или GIF.</div>
   {% endif %}

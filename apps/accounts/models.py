@@ -14,6 +14,13 @@ class TelegramProfile(models.Model):
     chat_id = models.BigIntegerField(blank=True, null=True)
     is_allowed = models.BooleanField(default=True)
     is_bot_admin = models.BooleanField(default=False)
+    active_album = models.ForeignKey(
+        "files.Album",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="active_for_profiles",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -57,3 +64,40 @@ class TelegramLoginToken(models.Model):
     def is_active(self) -> bool:
         """Возвращает, можно ли ещё использовать токен для входа на сайт."""
         return self.consumed_at is None and self.expires_at > timezone.now()
+
+
+class DictionaryEntry(models.Model):
+    """Хранит одну словарную статью из JSON: позицию, заголовок и толкование для быстрой выдачи ботом."""
+
+    position = models.PositiveIntegerField(unique=True, db_index=True)
+    title = models.CharField(max_length=255, db_index=True)
+    sense = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position"]
+        verbose_name = "Словарная статья"
+        verbose_name_plural = "Словарные статьи"
+
+    def __str__(self) -> str:
+        return f"{self.position + 1}. {self.title}"
+
+
+class DictionaryProgress(models.Model):
+    """Запоминает, с какой позиции Telegram-профилю нужно показать следующую порцию словаря."""
+
+    profile = models.OneToOneField(
+        TelegramProfile,
+        on_delete=models.CASCADE,
+        related_name="dictionary_progress",
+    )
+    next_position = models.PositiveIntegerField(default=0)
+    last_start_position = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Прогресс словаря"
+        verbose_name_plural = "Прогресс словаря"
+
+    def __str__(self) -> str:
+        return f"{self.profile.display_name}: next={self.next_position}"

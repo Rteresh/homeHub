@@ -1,0 +1,18 @@
+<div class="selection-bar" id="selection-bar" aria-live="polite">
+  <div class="selection-bar-left">
+    <button type="button" class="button secondary" id="selection-cancel">Отмена</button>
+    <span class="selection-count" id="selection-count">0 выбрано</span>
+  </div>
+  <div class="selection-bar-right">
+    <button type="button" class="button secondary" id="selection-download" disabled>Скачать</button>
+    <button type="button" class="button danger" id="selection-delete" disabled title="Можно удалить только свои файлы">Удалить</button>
+  </div>
+</div>
+
+<form class="selection-hidden-form" id="bulk-download-form" method="post" action="{% url 'media-bulk-download' %}">
+  {% csrf_token %}
+</form>
+<form class="selection-hidden-form" id="bulk-delete-form" method="post" action="{% url 'media-bulk-delete' %}">
+  {% csrf_token %}
+  <input type="hidden" name="return_to" value="{{ selection_return_to|default:'' }}">
+</form>

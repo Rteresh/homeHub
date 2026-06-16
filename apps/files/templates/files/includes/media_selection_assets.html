@@ -1,0 +1,93 @@
+<style>
+  .page-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .selection-bar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 10px 12px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    position: sticky;
+    top: 8px;
+    z-index: 5;
+  }
+  .selection-bar.is-visible { display: flex; }
+  .selection-bar-left, .selection-bar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .selection-count { color: var(--muted); font-size: 14px; }
+  .selectable-grid.selection-mode .selectable-tile { cursor: pointer; }
+  .media-grid a.media-tile.selectable-tile {
+    color: #fff;
+  }
+  .media-grid .selectable-tile,
+  .media-grid .selectable-tile.button {
+    display: block;
+    width: 100%;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    font: inherit;
+    text-align: inherit;
+    text-decoration: none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  .media-grid a.file-tile.selectable-tile {
+    display: grid;
+    place-content: center;
+    gap: 6px;
+    padding: 8px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--text);
+  }
+  .selectable-tile {
+    border: 0;
+    padding: 0;
+    font: inherit;
+    text-align: inherit;
+    width: 100%;
+    cursor: pointer;
+  }
+  .selectable-tile:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .selectable-tile.is-selected { outline: 3px solid var(--primary); outline-offset: -3px; }
+  .selectable-tile.is-selected::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(31, 111, 235, 0.18);
+    pointer-events: none;
+  }
+  .select-check {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    background: rgba(0, 0, 0, 0.35);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 14px;
+    line-height: 1;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+  }
+  .selectable-grid.selection-mode .select-check { display: inline-flex; }
+  .selectable-tile.is-selected .select-check {
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+  .selection-hidden-form { display: none; }
+  @media (max-width: 760px) {
+    .selection-bar { align-items: flex-start; flex-direction: column; }
+  }
+</style>

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}HomeHub — альбомы{% endblock %}
+
+{% block head %}
+  <style>
+    .album-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .album-count { color: var(--muted); }
+    .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+    .album-card { display: grid; gap: 8px; text-decoration: none; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+    .album-cover { aspect-ratio: 1; overflow: hidden; border-radius: 6px; background: #e7ebf0; display: grid; place-items: center; color: var(--muted); font-size: 28px; font-weight: 700; }
+    .album-cover img, .album-cover video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .album-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .album-meta { color: var(--muted); font-size: 13px; }
+    @media (max-width: 760px) {
+      .album-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .album-toolbar { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Альбомы</h1>
+    <a class="button secondary" href="{% url 'file-upload' %}">Загрузить файл</a>
+  </div>
+
+  <div class="album-toolbar">
+    <div class="album-count">Альбомы общие для всех пользователей HomeHub. Создавать их можно в Telegram-боте через кнопку «Альбом».</div>
+    <a class="button secondary" href="{% url 'file-list' %}">Все файлы</a>
+  </div>
+
+  {% if albums %}
+    <div class="album-grid">
+      {% for album in albums %}
+        <a class="album-card" href="{% url 'album-detail' album.public_id %}">
+          <div class="album-cover">
+            {% if album.cover_file %}
+              {% if album.cover_file.category == "video" and album.cover_file.poster_path %}
+                <img src="{% url 'file-poster' album.cover_file.public_id %}" alt="{{ album.name }}">
+              {% elif album.cover_file.category == "video" %}
+                <video src="{% url 'file-preview' album.cover_file.public_id %}" muted playsinline preload="metadata"></video>
+              {% else %}
+                <img src="{% url 'file-preview' album.cover_file.public_id %}" alt="{{ album.name }}">
+              {% endif %}
+            {% else %}
+              {{ album.name|slice:":1"|upper }}
+            {% endif %}
+          </div>
+          <div class="album-name">{{ album.name }}</div>
+          <div class="album-meta">{{ album.file_count }} файл(ов){% if album.owner_id != request.user.id %} · {{ album.owner.username }}{% endif %}</div>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">Альбомов пока нет. Создайте первый альбом в Telegram-боте.</div>
+  {% endif %}
+{% endblock %}

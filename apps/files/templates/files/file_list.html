@@ -69,7 +69,7 @@
             <td data-label="Тип">{{ file.get_category_display }}</td>
             <td data-label="Источник">{{ file.get_source_display }}</td>
             <td data-label="Дата">{{ file.created_at|date:"d.m.Y H:i" }}</td>
-            <td data-label="Размер">{{ file.size_bytes }}</td>
+            <td data-label="Размер">{{ file.size_mb|floatformat:2 }} МБ</td>
             <td data-label="Статус">{{ file.get_status_display }}</td>
             {% if request.user.is_staff or request.user.is_superuser %}
               <td data-label="Пользователь">{{ file.owner.username }}</td>

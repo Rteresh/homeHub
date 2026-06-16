@@ -1,8 +1,15 @@
 from django.contrib import admin
 
 from apps.files.forms import FileAssetAdminForm
-from apps.files.models import FileAsset
+from apps.files.models import Album, FileAsset
 from apps.files.services import FileIngestionService
+
+
+@admin.register(Album)
+class AlbumAdmin(admin.ModelAdmin):
+    list_display = ("name", "owner", "created_at")
+    search_fields = ("name", "owner__username")
+    readonly_fields = ("public_id", "created_at", "updated_at")
 
 
 @admin.register(FileAsset)

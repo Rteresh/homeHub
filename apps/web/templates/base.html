@@ -68,6 +68,7 @@
       <a class="nav-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}" href="{% url 'home' %}">Главная</a>
       <a class="nav-link {% if request.resolver_match.url_name == 'file-list' or request.resolver_match.url_name == 'file-upload' %}active{% endif %}" href="{% url 'file-list' %}">Файлы</a>
       <a class="nav-link {% if request.resolver_match.url_name == 'media-library' %}active{% endif %}" href="{% url 'media-library' %}">Медиатека</a>
+      <a class="nav-link {% if request.resolver_match.url_name == 'album-list' or request.resolver_match.url_name == 'album-detail' %}active{% endif %}" href="{% url 'album-list' %}">Альбомы</a>
       <a class="nav-link {% if request.resolver_match.url_name == 'later' %}active{% endif %}" href="{% url 'later' %}">Добавится позже</a>
     </div>
     {% if request.user.is_authenticated %}

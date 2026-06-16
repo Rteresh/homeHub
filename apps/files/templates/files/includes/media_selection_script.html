@@ -1,0 +1,192 @@
+<script>
+  (function () {
+    function initMediaSelection() {
+      const grid = document.querySelector("[data-selectable-grid]");
+      if (!grid) {
+        return;
+      }
+
+      const enterButton = document.getElementById("enter-selection-mode");
+      const selectionBar = document.getElementById("selection-bar");
+      const selectionCount = document.getElementById("selection-count");
+      const cancelButton = document.getElementById("selection-cancel");
+      const downloadButton = document.getElementById("selection-download");
+      const deleteButton = document.getElementById("selection-delete");
+      const downloadForm = document.getElementById("bulk-download-form");
+      const deleteForm = document.getElementById("bulk-delete-form");
+      const tiles = Array.from(grid.querySelectorAll(".selectable-tile"));
+
+      if (!selectionBar || !selectionCount || !cancelButton || !downloadButton || !deleteButton || !downloadForm || !deleteForm) {
+        return;
+      }
+
+      let selectionMode = false;
+      const selectedIds = new Set();
+      const longPressMs = 450;
+      let pressTimer = null;
+      let suppressNextClick = false;
+
+      function countLabel(count) {
+        if (count === 1) {
+          return "1 выбран";
+        }
+        return count + " выбрано";
+      }
+
+      function tileById(publicId) {
+        return tiles.find(function (tile) {
+          return tile.dataset.publicId === publicId;
+        });
+      }
+
+      function allSelectedDeletable() {
+        if (selectedIds.size === 0) {
+          return false;
+        }
+        for (const publicId of selectedIds) {
+          const tile = tileById(publicId);
+          if (!tile || tile.dataset.canDelete !== "true") {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      function syncTileState(tile) {
+        const isSelected = selectedIds.has(tile.dataset.publicId);
+        tile.classList.toggle("is-selected", isSelected);
+        tile.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      }
+
+      function updateUi() {
+        const count = selectedIds.size;
+        selectionCount.textContent = countLabel(count);
+        downloadButton.disabled = count === 0;
+        deleteButton.disabled = !allSelectedDeletable();
+        deleteButton.title = deleteButton.disabled
+          ? "Можно удалить только свои файлы"
+          : "Удалить выбранные файлы";
+        tiles.forEach(syncTileState);
+      }
+
+      function setSelectionMode(enabled) {
+        selectionMode = enabled;
+        grid.classList.toggle("selection-mode", enabled);
+        selectionBar.classList.toggle("is-visible", enabled);
+        if (enterButton) {
+          enterButton.hidden = enabled;
+        }
+        if (!enabled) {
+          selectedIds.clear();
+        }
+        updateUi();
+      }
+
+      function toggleSelection(tile) {
+        const publicId = tile.dataset.publicId;
+        if (!publicId) {
+          return;
+        }
+        if (selectedIds.has(publicId)) {
+          selectedIds.delete(publicId);
+        } else {
+          selectedIds.add(publicId);
+        }
+        updateUi();
+      }
+
+      function clearPressTimer() {
+        if (pressTimer !== null) {
+          window.clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+      }
+
+      function fillForm(form, ids) {
+        form.querySelectorAll('input[name="public_ids"]').forEach(function (input) {
+          input.remove();
+        });
+        ids.forEach(function (publicId) {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "public_ids";
+          input.value = publicId;
+          form.appendChild(input);
+        });
+      }
+
+      if (enterButton) {
+        enterButton.addEventListener("click", function () {
+          setSelectionMode(true);
+        });
+      }
+
+      cancelButton.addEventListener("click", function () {
+        setSelectionMode(false);
+      });
+
+      downloadButton.addEventListener("click", function () {
+        if (selectedIds.size === 0) {
+          return;
+        }
+        fillForm(downloadForm, Array.from(selectedIds));
+        downloadForm.submit();
+      });
+
+      deleteButton.addEventListener("click", function () {
+        if (!allSelectedDeletable()) {
+          return;
+        }
+        const count = selectedIds.size;
+        const message = count === 1
+          ? "Удалить выбранный файл?"
+          : "Удалить выбранные файлы (" + count + ")?";
+        if (!window.confirm(message)) {
+          return;
+        }
+        fillForm(deleteForm, Array.from(selectedIds));
+        deleteForm.submit();
+      });
+
+      tiles.forEach(function (tile) {
+        tile.setAttribute("aria-pressed", "false");
+
+        tile.addEventListener("click", function (event) {
+          if (!selectionMode) {
+            return;
+          }
+          event.preventDefault();
+          if (suppressNextClick) {
+            suppressNextClick = false;
+            return;
+          }
+          toggleSelection(tile);
+        });
+
+        tile.addEventListener("pointerdown", function () {
+          if (selectionMode) {
+            return;
+          }
+          clearPressTimer();
+          pressTimer = window.setTimeout(function () {
+            suppressNextClick = true;
+            setSelectionMode(true);
+            toggleSelection(tile);
+          }, longPressMs);
+        });
+
+        ["pointerup", "pointerleave", "pointercancel"].forEach(function (eventName) {
+          tile.addEventListener(eventName, clearPressTimer);
+        });
+      });
+
+      updateUi();
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initMediaSelection);
+    } else {
+      initMediaSelection();
+    }
+  })();
+</script>

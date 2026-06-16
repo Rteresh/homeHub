@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}HomeHub — загрузка файла{% endblock %}
+{% block title %}HomeHub — загрузка файлов{% endblock %}
 
 {% block head %}
   <style>
@@ -8,6 +8,7 @@
     .field { display: grid; gap: 6px; }
     .field label { color: var(--muted); }
     .field input, .field select { width: 100%; }
+    .field-hint { margin: 0; color: var(--muted); font-size: 13px; }
     .form-actions { display: flex; gap: 10px; flex-wrap: wrap; }
     .errorlist { margin: 0; padding-left: 18px; color: var(--danger); }
   </style>
@@ -15,7 +16,7 @@
 
 {% block content %}
   <div class="page-header">
-    <h1>Загрузка файла</h1>
+    <h1>Загрузка файлов</h1>
   </div>
 
   <section class="panel">
@@ -23,14 +24,20 @@
       {% csrf_token %}
       {{ form.non_field_errors }}
       <div class="field">
-        {{ form.file.label_tag }}
-        {{ form.file }}
-        {{ form.file.errors }}
+        {{ form.files.label_tag }}
+        {{ form.files }}
+        <p class="field-hint">Можно выбрать несколько файлов сразу (Cmd или Ctrl + клик).</p>
+        {{ form.files.errors }}
       </div>
       <div class="field">
         {{ form.category.label_tag }}
         {{ form.category }}
         {{ form.category.errors }}
+      </div>
+      <div class="field">
+        {{ form.album.label_tag }}
+        {{ form.album }}
+        {{ form.album.errors }}
       </div>
       <div class="form-actions">
         <button type="submit">Загрузить</button>

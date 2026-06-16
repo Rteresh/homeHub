@@ -122,3 +122,7 @@ LOGOUT_REDIRECT_URL = "login"
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 SITE_BASE_URL = os.environ.get("SITE_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+TELEGRAM_DOWNLOAD_TIMEOUT = int(os.environ.get("TELEGRAM_DOWNLOAD_TIMEOUT", "300"))
+TELEGRAM_API_BASE_URL = os.environ.get("TELEGRAM_API_BASE_URL", "").rstrip("/")
+TELEGRAM_LOCAL_MODE = env_bool("TELEGRAM_LOCAL_MODE", default=False)
+TELEGRAM_LOCAL_FILES_PATH = os.environ.get("TELEGRAM_LOCAL_FILES_PATH", "").strip()
