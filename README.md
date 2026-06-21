@@ -363,4 +363,116 @@ tail -100 storage/logs/bot.log
 
 Для файлов больше 20 МБ подключите Local Bot API (см. раздел «Большие файлы из Telegram»).
 
+## Развёртывание на сервере (Docker)
+
+Стек: PostgreSQL + Django (gunicorn) + Telegram-бот. Файлы и данные БД хранятся в Docker volumes.
+
+### 1. Подготовка Debian-сервера
+
+Подключитесь по SSH и установите Docker:
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl git
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo usermod -aG docker "$USER"
+```
+
+Выйдите из SSH и зайдите снова, чтобы группа `docker` применилась.
+
+### 2. Клонирование проекта
+
+```bash
+git clone https://github.com/YOUR_USER/homeHub.git
+cd homeHub
+```
+
+Или скопируйте проект с локальной машины:
+
+```bash
+rsync -avz --exclude '.venv' --exclude 'storage' --exclude '.git' \
+  ./ user@SERVER_IP:~/homeHub/
+```
+
+### 3. Настройка `.env`
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Обязательно задайте для production:
+
+```env
+DJANGO_SECRET_KEY=длинный-случайный-ключ
+DJANGO_DEBUG=false
+DJANGO_ALLOWED_HOSTS=IP_СЕРВЕРА,домен.example
+POSTGRES_PASSWORD=сильный-пароль
+SITE_BASE_URL=http://IP_СЕРВЕРА:8001
+TELEGRAM_BOT_TOKEN=токен-от-BotFather
+```
+
+`POSTGRES_HOST` в Docker менять не нужно — в `docker-compose.yml` он переопределяется на `db`.
+
+### 4. Запуск
+
+```bash
+docker compose up -d --build
+```
+
+Проверка:
+
+```bash
+docker compose ps
+docker compose logs -f web
+curl -I "http://127.0.0.1:${SITE_PORT:-8001}/"
+```
+
+Сайт будет доступен по `http://IP_СЕРВЕРА:8001`. Откройте порт в firewall, если нужен доступ извне:
+
+```bash
+sudo ufw allow 8001/tcp
+```
+
+### 5. Полезные команды на сервере
+
+```bash
+# логи
+docker compose logs -f web
+docker compose logs -f bot
+
+# перезапуск после обновления кода
+git pull
+docker compose up -d --build
+
+# остановка
+docker compose down
+
+# остановка с удалением volumes (удалит БД и файлы!)
+docker compose down -v
+```
+
+### 6. Обновление и бэкап
+
+Данные лежат в volumes `postgres_data` и `homehub_storage`. Перед обновлением ОС или Docker сделайте бэкап:
+
+```bash
+docker compose exec db pg_dump -U homehub homehub > backup.sql
+docker run --rm -v homehub_homehub_storage:/data -v "$PWD":/backup alpine \
+  tar czf /backup/storage-backup.tar.gz -C /data .
+```
+
+Имена volumes могут отличаться — посмотрите `docker volume ls | grep homehub`.
+
+### 7. HTTPS (опционально)
+
+Для домена с TLS поставьте перед контейнером reverse proxy (Caddy или nginx) и проксируйте на `127.0.0.1:8001`. Тогда обновите `SITE_BASE_URL` и `DJANGO_ALLOWED_HOSTS` на ваш домен.
+
 
