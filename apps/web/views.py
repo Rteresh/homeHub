@@ -1,20 +1,15 @@
-from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib import messages
 from django.contrib.auth import login
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import Http404
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
+from django.views import View
 from django.views.generic import TemplateView
 
 from apps.accounts.services import TelegramLoginService
+from apps.web.mixins import StaffRequiredMixin
 from apps.web.services.log_viewer import DEFAULT_TAIL_LINES, MAX_TAIL_LINES, LogViewerService
-
-
-class StaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """Доступ только для staff/superuser — как к ops-разделам на деплое."""
-
-    def test_func(self):
-        user = self.request.user
-        return user.is_active and (user.is_staff or user.is_superuser)
+from apps.web.services.script_runner import RUN_TIMEOUT_SEC, ScriptRunnerError, ScriptRunnerService
 
 
 class HomeView(LoginRequiredMixin, TemplateView):
@@ -56,6 +51,61 @@ class LogViewerDetailView(StaffRequiredMixin, TemplateView):
         context["follow"] = self.request.GET.get("follow") == "1"
         context["all_logs"] = LogViewerService.list_logs()
         return context
+
+
+class ScriptRunnerView(StaffRequiredMixin, View):
+    """Выбор whitelisted скрипта и запуск по кнопке; результат — на той же странице."""
+
+    template_name = "web/ops_scripts.html"
+    session_result_key = "ops_script_result"
+
+    def get(self, request):
+        last_result = request.session.pop(self.session_result_key, None)
+        return render(
+            request,
+            self.template_name,
+            {
+                "scripts": ScriptRunnerService.list_scripts(),
+                "last_result": last_result,
+                "timeout_sec": RUN_TIMEOUT_SEC,
+            },
+        )
+
+    def post(self, request):
+        slug = request.POST.get("script", "").strip()
+        target_dir = request.POST.get("target_dir", "").strip()
+        dry_run = request.POST.get("dry_run") == "1"
+
+        if not slug:
+            messages.error(request, "Выберите скрипт.")
+            return redirect("ops-scripts")
+
+        try:
+            result = ScriptRunnerService.run(
+                slug,
+                target_dir=target_dir,
+                dry_run=dry_run,
+                user=request.user,
+            )
+            request.session[self.session_result_key] = {
+                "slug": result.slug,
+                "label": result.label,
+                "command": result.command,
+                "exit_code": result.exit_code,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "ok": result.ok,
+                "timed_out": result.timed_out,
+                "duration_sec": round(result.duration_sec, 1),
+            }
+            if result.ok:
+                messages.success(request, f"Скрипт «{result.label}» завершён успешно.")
+            else:
+                messages.error(request, f"Скрипт «{result.label}» завершился с ошибкой (код {result.exit_code}).")
+        except ScriptRunnerError as exc:
+            messages.error(request, str(exc))
+
+        return redirect("ops-scripts")
 
 
 def telegram_login(request):

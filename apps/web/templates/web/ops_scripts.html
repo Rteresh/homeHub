@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}Скрипты — HomeHub{% endblock %}
+
+{% block head %}
+<style>
+  .ops-layout { display: grid; gap: 20px; }
+  .script-list { display: grid; gap: 12px; }
+  .script-card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px;
+    display: grid;
+    gap: 8px;
+  }
+  .script-card label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+  .script-card input[type="radio"] { margin-top: 4px; }
+  .script-title { font-weight: 600; }
+  .script-desc { color: var(--muted); font-size: 14px; margin: 0; }
+  .script-meta { color: var(--muted); font-size: 13px; }
+  .script-missing { color: var(--danger); font-size: 13px; }
+  .ops-options { display: grid; gap: 12px; max-width: 520px; }
+  .ops-options label { display: grid; gap: 6px; color: var(--muted); font-size: 14px; }
+  .ops-hint { color: var(--muted); font-size: 14px; margin: 0; }
+  .ops-output {
+    margin: 0;
+    padding: 16px;
+    background: #0f1720;
+    color: #d7e0ea;
+    border-radius: 8px;
+    overflow: auto;
+    max-height: 50vh;
+    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .ops-result-ok { border-left: 4px solid #2da44e; }
+  .ops-result-fail { border-left: 4px solid var(--danger); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Скрипты</h1>
+    <p class="ops-hint">Только whitelisted-скрипты из <code>scripts/</code>. Лимит: {{ timeout_sec }} с.</p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a class="button secondary" href="{% url 'ops-logs' %}">Журналы</a>
+    <a class="button secondary" href="{% url 'admin:index' %}">Django admin</a>
+  </div>
+</div>
+
+<div class="ops-layout">
+  <form class="panel" method="post" id="ops-script-form">
+    {% csrf_token %}
+    <div class="script-list">
+      {% for script in scripts %}
+        <div class="script-card">
+          <label>
+            <input type="radio" name="script" value="{{ script.slug }}"
+                   data-needs-target="{{ script.needs_target|yesno:'1,0' }}"
+                   data-supports-dry-run="{{ script.supports_dry_run|yesno:'1,0' }}"
+                   {% if forloop.first %}checked{% endif %}
+                   {% if not script.exists %}disabled{% endif %}>
+            <span>
+              <span class="script-title">{{ script.label }}</span>
+              <p class="script-desc">{{ script.description }}</p>
+              <span class="script-meta"><code>{{ script.filename }}</code></span>
+              {% if not script.exists %}
+                <div class="script-missing">Файл скрипта не найден в контейнере</div>
+              {% endif %}
+            </span>
+          </label>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="ops-options" style="margin-top:16px;">
+      <label id="target-field">
+        Каталог носителя
+        <input type="text" name="target_dir" placeholder="/media/usb" autocomplete="off">
+      </label>
+      <label id="dry-run-field" style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+        <input type="checkbox" name="dry_run" value="1">
+        Пробный прогон (dry-run, без копирования)
+      </label>
+    </div>
+
+    <p class="ops-hint" style="margin-top:12px;">
+      Для export-скриптов носитель должен быть смонтирован и доступен процессу web (в Docker — volume на <code>/media/...</code>).
+    </p>
+
+    <button type="submit" style="margin-top:16px;">Запустить</button>
+  </form>
+
+  {% if last_result %}
+    <div class="panel {% if last_result.ok %}ops-result-ok{% else %}ops-result-fail{% endif %}">
+      <h2>Результат: {{ last_result.label }}</h2>
+      <p class="ops-hint">
+        Код {{ last_result.exit_code }} · {{ last_result.duration_sec }} с
+        {% if last_result.timed_out %}· превышен лимит времени{% endif %}
+      </p>
+      <p class="ops-hint"><code>{{ last_result.command }}</code></p>
+      {% if last_result.stdout %}
+        <h3>stdout</h3>
+        <pre class="ops-output">{{ last_result.stdout }}</pre>
+      {% endif %}
+      {% if last_result.stderr %}
+        <h3>stderr</h3>
+        <pre class="ops-output">{{ last_result.stderr }}</pre>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  const form = document.getElementById("ops-script-form");
+  if (!form) return;
+  const targetField = document.getElementById("target-field");
+  const dryRunField = document.getElementById("dry-run-field");
+
+  function selectedRadio() {
+    return form.querySelector('input[name="script"]:checked');
+  }
+
+  function refreshFields() {
+    const radio = selectedRadio();
+    const needsTarget = radio && radio.dataset.needsTarget === "1";
+    const supportsDryRun = radio && radio.dataset.supportsDryRun === "1";
+    targetField.style.display = needsTarget ? "grid" : "none";
+    dryRunField.style.display = supportsDryRun ? "flex" : "none";
+  }
+
+  form.querySelectorAll('input[name="script"]').forEach((el) => {
+    el.addEventListener("change", refreshFields);
+  });
+  refreshFields();
+})();
+</script>
+{% endblock %}

@@ -265,7 +265,10 @@ TELEGRAM_DOWNLOAD_TIMEOUT=600
 
 ### Веб-интерфейс (staff)
 
-Пользователи с флагом **staff** видят пункт «Журналы» в меню и страницу `/ops/logs/` — tail последних строк из `storage/logs/` с автообновлением.
+Пользователи с флагом **staff** видят пункты «Журналы» и «Скрипты» в меню:
+
+- `/ops/logs/` — tail журналов из `storage/logs/`
+- `/ops/scripts/` — запуск whitelisted-скриптов backup/export
 
 ### Файлы
 

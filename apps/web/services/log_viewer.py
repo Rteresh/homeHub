@@ -16,6 +16,7 @@ LOG_SOURCES: tuple[tuple[str, str, str], ...] = (
     ("backup", "backup.log", "Скрипт backup"),
     ("export-storage", "export-storage.log", "Выгрузка storage"),
     ("export-backups", "export-backups.log", "Выгрузка backups"),
+    ("ops-scripts", "ops-scripts.log", "Ops: запуск скриптов"),
 )
 
 LOG_SLUGS = {slug for slug, _, _ in LOG_SOURCES}

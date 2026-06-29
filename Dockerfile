@@ -1,8 +1,8 @@
 FROM python:3.12-slim-bookworm
 
-# ffmpeg нужен для обложек видео (apps/files/video_poster.py)
+# ffmpeg и pg_dump для ops-панели (backup из web-контейнера)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -14,7 +14,7 @@ COPY . .
 
 RUN mkdir -p storage/logs storage/files staticfiles \
     && python manage.py collectstatic --noinput \
-    && chmod +x docker/entrypoint-web.sh docker/entrypoint-bot.sh
+    && chmod +x docker/entrypoint-web.sh docker/entrypoint-bot.sh scripts/*.sh
 
 ENV PYTHONUNBUFFERED=1 \
     DJANGO_SETTINGS_MODULE=homehub.settings

@@ -114,6 +114,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "media/"
 HOMEHUB_STORAGE_ROOT = Path(os.environ.get("HOMEHUB_STORAGE_ROOT", BASE_DIR / "storage")).resolve()
+OPS_EXPORT_PATH_PREFIXES = env_list("OPS_EXPORT_PATH_PREFIXES", "/media,/mnt")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
