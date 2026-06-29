@@ -16,6 +16,7 @@ NO_ALBUM_BUTTON = "Без альбома"
 SELECT_ALBUM_BUTTON = "Выбрать альбом"
 CREATE_ALBUM_BUTTON = "Создать альбом"
 BACK_TO_MAIN_BUTTON = "Назад"
+SHUTDOWN_BUTTON = "Выключить сервер"
 
 
 class CreateAlbumStates(StatesGroup):
@@ -24,13 +25,16 @@ class CreateAlbumStates(StatesGroup):
     waiting_name = State()
 
 
-def main_keyboard() -> ReplyKeyboardMarkup:
+def main_keyboard(*, is_bot_admin: bool = False) -> ReplyKeyboardMarkup:
     """Создаёт постоянную клавиатуру Telegram с быстрым доступом к словарю, альбомам и справке."""
+    rows = [
+        [KeyboardButton(text="Словарь"), KeyboardButton(text=ALBUM_BUTTON)],
+        [KeyboardButton(text=HELP_BUTTON)],
+    ]
+    if is_bot_admin:
+        rows.append([KeyboardButton(text=SHUTDOWN_BUTTON)])
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Словарь"), KeyboardButton(text=ALBUM_BUTTON)],
-            [KeyboardButton(text=HELP_BUTTON)],
-        ],
+        keyboard=rows,
         resize_keyboard=True,
         input_field_placeholder="Выберите действие",
     )
@@ -73,9 +77,12 @@ async def album_menu(message: Message, telegram_profile: TelegramProfile, django
 
 
 @router.message(F.text.casefold() == BACK_TO_MAIN_BUTTON.casefold())
-async def back_to_main(message: Message) -> None:
+async def back_to_main(message: Message, telegram_profile: TelegramProfile) -> None:
     """Возвращает пользователя к основной клавиатуре бота."""
-    await message.answer("Главное меню.", reply_markup=main_keyboard())
+    await message.answer(
+        "Главное меню.",
+        reply_markup=main_keyboard(is_bot_admin=telegram_profile.is_bot_admin),
+    )
 
 
 @router.message(F.text.casefold() == NO_ALBUM_BUTTON.casefold())
@@ -139,6 +146,7 @@ async def create_album_from_name(
         CREATE_ALBUM_BUTTON.casefold(),
         BACK_TO_MAIN_BUTTON.casefold(),
         ALBUM_BUTTON.casefold(),
+        SHUTDOWN_BUTTON.casefold(),
         "словарь",
     }:
         await message.answer("Введите название альбома текстом, а не кнопкой меню:")

@@ -30,9 +30,12 @@ logger = logging.getLogger(__name__)
 
 @router.message(Command("start", "help"))
 @router.message(F.text.casefold() == HELP_BUTTON.casefold())
-async def help_command(message: Message, django_user) -> None:
+async def help_command(message: Message, django_user, telegram_profile: TelegramProfile) -> None:
     """Отправляет справку по командам, кнопкам и сценариям использования бота."""
-    await message.answer(build_help_text(), reply_markup=main_keyboard())
+    await message.answer(
+        build_help_text(),
+        reply_markup=main_keyboard(is_bot_admin=telegram_profile.is_bot_admin),
+    )
 
 
 def build_help_text() -> str:
