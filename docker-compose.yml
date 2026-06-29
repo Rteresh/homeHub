@@ -28,7 +28,7 @@ services:
     ports:
       - "${SITE_PORT:-8001}:8000"
     volumes:
-      - homehub_storage:/app/storage
+      - /srv/storage/homehub:/app/storage
     depends_on:
       db:
         condition: service_healthy
@@ -41,7 +41,7 @@ services:
       POSTGRES_HOST: db
     command: ["/app/docker/entrypoint-bot.sh"]
     volumes:
-      - homehub_storage:/app/storage
+      - /srv/storage/homehub:/app/storage
     depends_on:
       db:
         condition: service_healthy
@@ -50,4 +50,3 @@ services:
 
 volumes:
   postgres_data:
-  homehub_storage:

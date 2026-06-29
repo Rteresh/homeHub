@@ -13,6 +13,7 @@ from django.db import transaction
 from django.db.models import Q, QuerySet
 from django.http import HttpRequest
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.files.albums import AlbumService
 from apps.files.models import Album, FileAsset
@@ -105,14 +106,33 @@ class FileIngestionService:
 
         original_name = uploaded_file.name
         mime_type = getattr(uploaded_file, "content_type", "") or mimetypes.guess_type(original_name)[0] or ""
-        relative_path = storage.build_upload_path(asset.owner_id, original_name)
+        category = (
+            asset.category
+            if asset.category and asset.category != FileAsset.Category.OTHER
+            else cls.detect_category(mime_type, original_name)
+        )
+
+        album_name = None
+        album_fallback_id = ""
+        if asset.album_id:
+            album = asset.album
+            album_name = album.name
+            album_fallback_id = album.public_id.hex
+
+        relative_path = storage.build_upload_path(
+            asset.owner_id,
+            original_name,
+            category=category,
+            album_name=album_name,
+            album_fallback_id=album_fallback_id,
+            uploaded_at=timezone.now(),
+        )
         size_bytes, checksum = storage.write_uploaded_file(relative_path, uploaded_file)
 
         asset.original_name = original_name
         asset.storage_path = relative_path
         asset.mime_type = mime_type
-        if not asset.category or asset.category == FileAsset.Category.OTHER:
-            asset.category = cls.detect_category(mime_type, original_name)
+        asset.category = category
         asset.size_bytes = size_bytes
         asset.checksum = checksum
         asset.source = asset.source or FileAsset.Source.WEB

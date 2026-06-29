@@ -11,9 +11,10 @@ from apps.files.storage import LocalFileStorage
 logger = logging.getLogger(__name__)
 
 
-def build_poster_relative_path(owner_id: int, public_id) -> str:
-    """Формирует относительный путь JPEG-постера для видео в приватном хранилище."""
-    return f"uploads/user_{owner_id}/posters/{public_id}.jpg"
+def build_poster_relative_path(storage_path: str, public_id) -> str:
+    """Формирует относительный путь JPEG-постера рядом с видеофайлом в приватном хранилище."""
+    video_dir = Path(storage_path).parent
+    return str(video_dir / "posters" / f"{public_id}.jpg")
 
 
 def generate_video_poster(asset: FileAsset, storage: LocalFileStorage | None = None) -> str | None:
@@ -31,7 +32,7 @@ def generate_video_poster(asset: FileAsset, storage: LocalFileStorage | None = N
         logger.warning("Видеофайл не найден для постера: %s", asset.storage_path)
         return None
 
-    relative_path = build_poster_relative_path(asset.owner_id, asset.public_id)
+    relative_path = build_poster_relative_path(asset.storage_path, asset.public_id)
     poster_path = storage.resolve_private_path(relative_path)
     poster_path.parent.mkdir(parents=True, exist_ok=True)
 

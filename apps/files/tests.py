@@ -8,13 +8,14 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.files.albums import AlbumService
 from apps.files.models import Album, FileAsset
 from apps.files.permissions import FileAccessService
 from apps.files.services import FileIngestionService, FileQueryService
 from apps.files.storage import LocalFileStorage, StoragePathError
-from apps.files.video_poster import generate_video_poster
+from apps.files.video_poster import build_poster_relative_path, generate_video_poster
 
 
 class FileAccessServiceTests(TestCase):
@@ -69,6 +70,46 @@ class LocalFileStorageTests(TestCase):
             resolved_path = storage.resolve_private_path("uploads/file.txt")
 
             self.assertTrue(resolved_path.is_relative_to(Path(tmp_dir).resolve()))
+
+
+class StorageUploadPathTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="owner", password="password")
+
+    def test_upload_without_album_uses_user_date_and_category(self):
+        with TemporaryDirectory() as tmp_dir:
+            with override_settings(HOMEHUB_STORAGE_ROOT=Path(tmp_dir)):
+                uploaded_file = SimpleUploadedFile("note.txt", b"hello", content_type="text/plain")
+                asset = FileIngestionService.create_from_uploaded_file(owner=self.owner, uploaded_file=uploaded_file)
+
+                today = timezone.localtime().strftime("%Y-%m-%d")
+                expected_prefix = f"uploads/user_{self.owner.id}/{today}/document/"
+                self.assertTrue(asset.storage_path.startswith(expected_prefix))
+                self.assertTrue((Path(tmp_dir) / asset.storage_path).is_file())
+
+    def test_upload_to_album_uses_album_slug_and_category(self):
+        with TemporaryDirectory() as tmp_dir:
+            with override_settings(HOMEHUB_STORAGE_ROOT=Path(tmp_dir)):
+                album = AlbumService.create_album(self.owner, "Отпуск")
+                uploaded_file = SimpleUploadedFile("photo.jpg", b"fake-image", content_type="image/jpeg")
+                asset = FileIngestionService.create_from_uploaded_file(
+                    owner=self.owner,
+                    uploaded_file=uploaded_file,
+                    album=album,
+                )
+
+                self.assertTrue(asset.storage_path.startswith(f"albums/album-{album.public_id.hex[:8]}/photo/"))
+                self.assertTrue((Path(tmp_dir) / asset.storage_path).is_file())
+
+    def test_video_poster_path_is_next_to_video_file(self):
+        storage_path = "uploads/user_1/2026-06-29/video/abc_clip.mp4"
+        public_id = "11111111-2222-3333-4444-555555555555"
+        poster_path = build_poster_relative_path(storage_path, public_id)
+        self.assertEqual(
+            poster_path,
+            "uploads/user_1/2026-06-29/video/posters/11111111-2222-3333-4444-555555555555.jpg",
+        )
 
 
 class FileUploadViewTests(TestCase):
@@ -213,7 +254,8 @@ class VideoPosterServiceTests(TestCase):
 
             self.assertIsNotNone(result)
             asset.refresh_from_db()
-            self.assertTrue(asset.poster_path.endswith(".jpg"))
+            self.assertEqual(result, f"uploads/user_1/posters/{asset.public_id}.jpg")
+            self.assertEqual(asset.poster_path, result)
 
 
 class BulkMediaActionTests(TestCase):
@@ -228,7 +270,7 @@ class BulkMediaActionTests(TestCase):
 
     def _create_ready_file(self, owner, name: str, content: bytes, tmp_dir: Path) -> FileAsset:
         storage = LocalFileStorage(root=tmp_dir)
-        relative_path = storage.build_upload_path(owner.id, name)
+        relative_path = storage.build_upload_path(owner.id, name, category=FileAsset.Category.PHOTO)
         file_path = storage.resolve_private_path(relative_path)
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_bytes(content)
@@ -370,7 +412,7 @@ class AudioPreviewTests(TestCase):
             with override_settings(HOMEHUB_STORAGE_ROOT=Path(tmp_dir)):
                 user = get_user_model().objects.create_user(username="owner", password="password")
                 storage = LocalFileStorage(root=Path(tmp_dir))
-                relative_path = storage.build_upload_path(user.id, "track.mp3")
+                relative_path = storage.build_upload_path(user.id, "track.mp3", category=FileAsset.Category.AUDIO)
                 file_path = storage.resolve_private_path(relative_path)
                 file_path.parent.mkdir(parents=True, exist_ok=True)
                 file_path.write_bytes(b"fake-mp3")

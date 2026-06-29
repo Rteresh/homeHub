@@ -365,11 +365,18 @@ tail -100 storage/logs/bot.log
 
 ## Развёртывание на сервере (Docker)
 
-Стек: PostgreSQL + Django (gunicorn) + Telegram-бот. Файлы и данные БД хранятся в Docker volumes.
+Стек: PostgreSQL + Django (gunicorn) + Telegram-бот. БД — Docker volume; файлы — bind mount на `/srv/storage/homehub`.
 
 ### 1. Подготовка Debian-сервера
 
-Подключитесь по SSH и установите Docker:
+Подключитесь по SSH, установите Docker и создайте каталог хранилища:
+
+```bash
+sudo mkdir -p /srv/storage/homehub/{backup,logs,tmp}
+sudo chown -R "$USER:$USER" /srv/storage/homehub
+```
+
+Установите Docker:
 
 ```bash
 sudo apt update
@@ -414,12 +421,20 @@ nano .env
 DJANGO_SECRET_KEY=длинный-случайный-ключ
 DJANGO_DEBUG=false
 DJANGO_ALLOWED_HOSTS=IP_СЕРВЕРА,домен.example
+HOMEHUB_STORAGE_ROOT=/app/storage
 POSTGRES_PASSWORD=сильный-пароль
 SITE_BASE_URL=http://IP_СЕРВЕРА:8001
 TELEGRAM_BOT_TOKEN=токен-от-BotFather
+PROJECT_NAME=homehub
 ```
 
 `POSTGRES_HOST` в Docker менять не нужно — в `docker-compose.yml` он переопределяется на `db`.
+
+Если переносите данные со старого пути `/srv/projects/homemhub/storage`:
+
+```bash
+sudo rsync -a /srv/projects/homemhub/storage/ /srv/storage/homehub/
+```
 
 ### 4. Запуск
 
@@ -459,17 +474,43 @@ docker compose down
 docker compose down -v
 ```
 
-### 6. Обновление и бэкап
+### 6. Бэкап и выгрузка на носитель
 
-Данные лежат в volumes `postgres_data` и `homehub_storage`. Перед обновлением ОС или Docker сделайте бэкап:
+Файлы приложения лежат в `/srv/storage/homehub` (в контейнере — `/app/storage`). Структура загрузок:
+
+- без альбома: `uploads/user_{id}/{YYYY-MM-DD}/{category}/`
+- в альбоме: `albums/{slug_названия}/{category}/`
+- бэкапы: `backup/{YYYY-MM-DD}/`
+
+Скрипты в каталоге `scripts/`:
 
 ```bash
-docker compose exec db pg_dump -U homehub homehub > backup.sql
-docker run --rm -v homehub_homehub_storage:/data -v "$PWD":/backup alpine \
-  tar czf /backup/storage-backup.tar.gz -C /data .
+chmod +x scripts/*.sh
+
+# ежедневный бэкап БД и конфигурации
+./scripts/backup_homehub.sh
+
+# полная копия storage на съёмный носитель
+./scripts/export_storage.sh /media/usb
+
+# только бэкапы на съёмный носитель
+./scripts/export_backups.sh /media/usb
+./scripts/export_backups.sh --latest /media/usb
 ```
 
-Имена volumes могут отличаться — посмотрите `docker volume ls | grep homehub`.
+Пример cron (ежедневно в 03:00):
+
+```bash
+0 3 * * * /path/to/homeHub/scripts/backup_homehub.sh >> /srv/storage/homehub/logs/backup.log 2>&1
+```
+
+Бэкап включает `.env` с секретами — храните носитель и каталог `backup/` в безопасном месте.
+
+Ручной дамп БД (если скрипт недоступен):
+
+```bash
+docker compose exec -T db pg_dump -U homehub homehub | gzip > /srv/storage/homehub/backup/manual/homehub.sql.gz
+```
 
 ### 7. HTTPS (опционально)
 
