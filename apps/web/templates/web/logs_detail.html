@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}{{ log.label }} — журналы{% endblock %}
+
+{% block head %}
+<style>
+  .log-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+  .log-toolbar label { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+  .log-toolbar input[type="number"] { width: 100px; }
+  .log-meta { color: var(--muted); font-size: 14px; margin-bottom: 12px; }
+  .log-viewer {
+    margin: 0;
+    padding: 16px;
+    background: #0f1720;
+    color: #d7e0ea;
+    border-radius: 8px;
+    overflow: auto;
+    max-height: 70vh;
+    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .log-empty { padding: 24px; color: var(--muted); }
+  .log-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+  .log-tab { text-decoration: none; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); font-size: 14px; }
+  .log-tab.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+</style>
+{% if follow %}
+<meta http-equiv="refresh" content="5">
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ log.label }}</h1>
+    <p class="log-meta"><code>{{ log.filename }}</code> · {{ log.size_bytes }} B
+      {% if log.updated_at %}· {{ log.updated_at|date:"d.m.Y H:i:s" }}{% endif %}
+    </p>
+  </div>
+  <a class="button secondary" href="{% url 'ops-logs' %}">Все журналы</a>
+</div>
+
+<div class="log-tabs">
+  {% for item in all_logs %}
+    <a class="log-tab {% if item.slug == log.slug %}active{% endif %}"
+       href="{% url 'ops-log-detail' item.slug %}?lines={{ lines }}{% if follow %}&follow=1{% endif %}">
+      {{ item.label }}
+    </a>
+  {% endfor %}
+</div>
+
+<form class="log-toolbar panel" method="get">
+  <label>Строк
+    <input type="number" name="lines" min="1" max="2000" value="{{ lines }}">
+  </label>
+  <label>
+    <input type="checkbox" name="follow" value="1" {% if follow %}checked{% endif %}>
+    Обновлять каждые 5 с
+  </label>
+  <button type="submit">Применить</button>
+</form>
+
+{% if content_lines %}
+  <pre class="log-viewer">{% for line in content_lines %}{{ line }}
+{% endfor %}</pre>
+{% else %}
+  <div class="panel log-empty">Файл пуст или ещё не создан.</div>
+{% endif %}
+{% endblock %}

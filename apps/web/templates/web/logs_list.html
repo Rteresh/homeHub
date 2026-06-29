@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Журналы — HomeHub{% endblock %}
+
+{% block head %}
+<style>
+  .log-table td:last-child { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; }
+  .log-missing { color: var(--muted); font-size: 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Журналы</h1>
+    <p class="log-missing">Каталог: <code>{{ logs_dir }}</code></p>
+  </div>
+  <a class="button secondary" href="{% url 'admin:index' %}">Django admin</a>
+</div>
+
+<div class="panel">
+  <table class="log-table">
+    <thead>
+      <tr>
+        <th>Журнал</th>
+        <th>Файл</th>
+        <th>Размер</th>
+        <th>Обновлён</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+        <tr>
+          <td data-label="Журнал">{{ log.label }}</td>
+          <td data-label="Файл"><code>{{ log.filename }}</code></td>
+          <td data-label="Размер">
+            {% if log.exists %}{{ log.size_bytes }} B{% else %}—{% endif %}
+          </td>
+          <td data-label="Обновлён">
+            {% if log.updated_at %}{{ log.updated_at|date:"d.m.Y H:i:s" }}{% else %}—{% endif %}
+          </td>
+          <td data-label="">
+            {% if log.exists %}
+              <a class="button secondary" href="{% url 'ops-log-detail' log.slug %}">Открыть</a>
+            {% else %}
+              <span class="log-missing">нет файла</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

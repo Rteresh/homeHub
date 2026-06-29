@@ -70,6 +70,9 @@
       <a class="nav-link {% if request.resolver_match.url_name == 'media-library' %}active{% endif %}" href="{% url 'media-library' %}">Медиатека</a>
       <a class="nav-link {% if request.resolver_match.url_name == 'album-list' or request.resolver_match.url_name == 'album-detail' %}active{% endif %}" href="{% url 'album-list' %}">Альбомы</a>
       <a class="nav-link {% if request.resolver_match.url_name == 'later' %}active{% endif %}" href="{% url 'later' %}">Добавится позже</a>
+      {% if request.user.is_staff or request.user.is_superuser %}
+        <a class="nav-link {% if request.resolver_match.url_name == 'ops-logs' or request.resolver_match.url_name == 'ops-log-detail' %}active{% endif %}" href="{% url 'ops-logs' %}">Журналы</a>
+      {% endif %}
     </div>
     {% if request.user.is_authenticated %}
       <div class="account-box">

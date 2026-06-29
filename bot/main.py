@@ -30,6 +30,30 @@ MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 DICTIONARY_SEND_TIME = time(hour=9, minute=0)
 
 
+def configure_logging() -> None:
+    """Пишет логи бота в storage/logs/bot.log и в stderr (для docker compose logs)."""
+    from django.conf import settings
+
+    log_dir = Path(settings.HOMEHUB_STORAGE_ROOT) / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "bot.log"
+
+    root_logger = logging.getLogger()
+    if any(isinstance(handler, logging.FileHandler) and handler.baseFilename == str(log_path) for handler in root_logger.handlers):
+        return
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+
+    root_logger.setLevel(logging.INFO)
+    root_logger.handlers.clear()
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(stream_handler)
+
+
 def create_bot(config) -> Bot:
     """Создаёт aiogram Bot с production API или с Local Bot API server при наличии настроек."""
     if not config.api_base_url:
@@ -55,6 +79,7 @@ def create_bot(config) -> Bot:
 
 async def main() -> None:
     """Запускает long polling Telegram-бота и подключает middleware авторизации и роутеры приёма данных."""
+    configure_logging()
     config = get_bot_config()
     bot = create_bot(config)
     dispatcher = Dispatcher(storage=MemoryStorage())

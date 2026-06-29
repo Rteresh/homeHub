@@ -263,11 +263,29 @@ TELEGRAM_DOWNLOAD_TIMEOUT=600
 
 ## Логи и PID-файлы
 
+### Веб-интерфейс (staff)
+
+Пользователи с флагом **staff** видят пункт «Журналы» в меню и страницу `/ops/logs/` — tail последних строк из `storage/logs/` с автообновлением.
+
+### Файлы
+
 Логи:
 
 ```text
 storage/logs/web.log
 storage/logs/bot.log
+storage/logs/gunicorn-access.log   # Docker + gunicorn
+storage/logs/gunicorn-error.log
+storage/logs/backup.log            # скрипты backup/export
+```
+
+На сервере: `/srv/storage/homehub/logs/`.
+
+### Docker
+
+```bash
+docker compose logs -f web
+docker compose logs -f bot
 ```
 
 PID-файлы:
@@ -481,6 +499,22 @@ docker compose down -v
 - без альбома: `uploads/user_{id}/{YYYY-MM-DD}/{category}/`
 - в альбоме: `albums/{slug_названия}/{category}/`
 - бэкапы: `backup/{YYYY-MM-DD}/`
+
+**Два файла окружения:**
+
+| Файл | Кто читает | Назначение |
+|------|------------|------------|
+| `.env` | Docker (web, bot) | Секреты, `HOMEHUB_STORAGE_ROOT=/app/storage` |
+| `.env.host` | `scripts/*.sh` на сервере | Пути хоста: `HOMEHUB_STORAGE_ROOT=/srv/storage/homehub` |
+
+На сервере один раз:
+
+```bash
+cp .env.host.example .env.host
+# в .env для Docker оставьте HOMEHUB_STORAGE_ROOT=/app/storage
+```
+
+Скрипты загружают сначала `.env`, затем `.env.host` (переопределяет пути).
 
 Скрипты в каталоге `scripts/`:
 
