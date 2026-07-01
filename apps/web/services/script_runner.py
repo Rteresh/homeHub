@@ -110,6 +110,23 @@ class ScriptRunnerService:
     def list_scripts(cls) -> list[ScriptInfo]:
         return [info for slug, _, _, _, _ in SCRIPT_SPECS if (info := cls.resolve_slug(slug)) is not None]
 
+    @staticmethod
+    def _ops_script_env() -> dict[str, str]:
+        """Env для subprocess: пути контейнера, без переопределения из .env.host на хосте."""
+        env = os.environ.copy()
+        storage = Path(settings.HOMEHUB_STORAGE_ROOT)
+        if not storage.is_absolute():
+            storage = (Path(settings.BASE_DIR) / storage).resolve()
+        # ponytail: volume в Docker всегда /app/storage; в .env иногда ошибочно /srv/storage/homehub
+        if Path("/.dockerenv").is_file():
+            container_storage = Path("/app/storage")
+            if container_storage.is_dir():
+                storage = container_storage
+        env["HOMEHUB_STORAGE_ROOT"] = str(storage)
+        env["HOMEHUB_SKIP_HOST_ENV"] = "1"
+        env.setdefault("PROJECT_NAME", "homehub")
+        return env
+
     @classmethod
     def validate_export_target(cls, target_dir: str) -> Path:
         cleaned = target_dir.strip()
@@ -159,9 +176,7 @@ class ScriptRunnerService:
         if info.needs_target:
             command.append(str(cls.validate_export_target(target_dir)))
 
-        env = os.environ.copy()
-        env.setdefault("HOMEHUB_STORAGE_ROOT", str(settings.HOMEHUB_STORAGE_ROOT))
-        env.setdefault("PROJECT_NAME", "homehub")
+        env = cls._ops_script_env()
 
         started_at = timezone.now()
         lock_path.write_text(f"{slug}\n{started_at.isoformat()}\n", encoding="utf-8")

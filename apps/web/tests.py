@@ -57,6 +57,14 @@ class LogViewerViewTests(TestCase):
 
 
 class ScriptRunnerServiceTests(TestCase):
+    def test_ops_script_env_sets_skip_and_resolves_storage(self):
+        with TemporaryDirectory() as tmp_dir:
+            storage = Path(tmp_dir) / "rel"
+            with override_settings(HOMEHUB_STORAGE_ROOT=Path("storage"), BASE_DIR=Path(tmp_dir)):
+                env = ScriptRunnerService._ops_script_env()
+            self.assertEqual(env["HOMEHUB_SKIP_HOST_ENV"], "1")
+            self.assertEqual(env["HOMEHUB_STORAGE_ROOT"], str((Path(tmp_dir) / "storage").resolve()))
+
     def test_unknown_slug_raises(self):
         with self.assertRaises(ScriptRunnerError):
             ScriptRunnerService.run("evil-script")
@@ -108,3 +116,6 @@ class ScriptRunnerViewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertTrue(mock_run.called)
+        env = mock_run.call_args.kwargs["env"]
+        self.assertEqual(env["HOMEHUB_SKIP_HOST_ENV"], "1")
+        self.assertEqual(env["HOMEHUB_STORAGE_ROOT"], str(Path(tmp_dir).resolve()))

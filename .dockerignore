@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .git/
 .env
+.env.host
 storage/
 .run/
 staticfiles/
