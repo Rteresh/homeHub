@@ -112,17 +112,9 @@ class ScriptRunnerService:
 
     @staticmethod
     def _ops_script_env() -> dict[str, str]:
-        """Env для subprocess: пути контейнера, без переопределения из .env.host на хосте."""
+        """Env для subprocess: пути из settings, без переопределения из .env.host на хосте."""
         env = os.environ.copy()
-        storage = Path(settings.HOMEHUB_STORAGE_ROOT)
-        if not storage.is_absolute():
-            storage = (Path(settings.BASE_DIR) / storage).resolve()
-        # ponytail: volume в Docker всегда /app/storage; в .env иногда ошибочно /srv/storage/homehub
-        if Path("/.dockerenv").is_file():
-            container_storage = Path("/app/storage")
-            if container_storage.is_dir():
-                storage = container_storage
-        env["HOMEHUB_STORAGE_ROOT"] = str(storage)
+        env["HOMEHUB_STORAGE_ROOT"] = str(settings.HOMEHUB_STORAGE_ROOT)
         env["HOMEHUB_SKIP_HOST_ENV"] = "1"
         env.setdefault("PROJECT_NAME", "homehub")
         return env

@@ -113,7 +113,42 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "media/"
-HOMEHUB_STORAGE_ROOT = Path(os.environ.get("HOMEHUB_STORAGE_ROOT", BASE_DIR / "storage")).resolve()
+
+# Точка монтирования storage в Docker (docker-compose: /srv/storage/homehub:/app/storage)
+DOCKER_STORAGE_MOUNT = Path("/app/storage")
+
+
+def _running_in_docker() -> bool:
+    return Path("/.dockerenv").is_file()
+
+
+def resolve_storage_root(
+    env: dict[str, str] | None = None,
+    base_dir: Path | None = None,
+    *,
+    docker_storage: Path | None = None,
+    in_docker: bool | None = None,
+) -> Path:
+    """Путь к storage: относительный → от base_dir; в Docker хостовый /srv/storage/... → /app/storage."""
+    env_map = env if env is not None else os.environ
+    base = base_dir or BASE_DIR
+    raw = env_map.get("HOMEHUB_STORAGE_ROOT", str(base / "storage"))
+    path = Path(raw)
+    if not path.is_absolute():
+        path = (base / path).resolve()
+    else:
+        path = path.resolve()
+
+    mount = docker_storage if docker_storage is not None else DOCKER_STORAGE_MOUNT
+    is_docker = in_docker if in_docker is not None else _running_in_docker()
+    if is_docker and mount.is_dir():
+        # ponytail: в .env для Docker часто ошибочно оставляют путь хоста из .env.host
+        if str(path).startswith("/srv/storage") or not path.is_dir():
+            return mount.resolve()
+    return path
+
+
+HOMEHUB_STORAGE_ROOT = resolve_storage_root()
 OPS_EXPORT_PATH_PREFIXES = env_list("OPS_EXPORT_PATH_PREFIXES", "/media,/mnt")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

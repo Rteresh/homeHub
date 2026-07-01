@@ -3,11 +3,25 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from apps.web.services.log_viewer import LogViewerService
 from apps.web.services.script_runner import ScriptRunnerError, ScriptRunnerService
+from homehub.settings import resolve_storage_root
+
+
+class StorageRootTests(SimpleTestCase):
+    def test_maps_host_path_to_container_mount_in_docker(self):
+        with TemporaryDirectory() as tmp_dir:
+            mount = Path(tmp_dir) / "app_storage"
+            mount.mkdir()
+            resolved = resolve_storage_root(
+                env={"HOMEHUB_STORAGE_ROOT": "/srv/storage/homehub"},
+                in_docker=True,
+                docker_storage=mount,
+            )
+            self.assertEqual(resolved, mount.resolve())
 
 
 class LogViewerServiceTests(TestCase):
@@ -57,13 +71,12 @@ class LogViewerViewTests(TestCase):
 
 
 class ScriptRunnerServiceTests(TestCase):
-    def test_ops_script_env_sets_skip_and_resolves_storage(self):
+    def test_ops_script_env_sets_skip_and_storage_from_settings(self):
         with TemporaryDirectory() as tmp_dir:
-            storage = Path(tmp_dir) / "rel"
-            with override_settings(HOMEHUB_STORAGE_ROOT=Path("storage"), BASE_DIR=Path(tmp_dir)):
+            with override_settings(HOMEHUB_STORAGE_ROOT=Path(tmp_dir) / "storage"):
                 env = ScriptRunnerService._ops_script_env()
             self.assertEqual(env["HOMEHUB_SKIP_HOST_ENV"], "1")
-            self.assertEqual(env["HOMEHUB_STORAGE_ROOT"], str((Path(tmp_dir) / "storage").resolve()))
+            self.assertEqual(env["HOMEHUB_STORAGE_ROOT"], str(Path(tmp_dir) / "storage"))
 
     def test_unknown_slug_raises(self):
         with self.assertRaises(ScriptRunnerError):
