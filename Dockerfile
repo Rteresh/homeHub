@@ -1,8 +1,13 @@
 FROM python:3.12-slim-bookworm
 
-# ffmpeg и pg_dump для ops-панели (backup из web-контейнера)
+# ffmpeg и pg_dump 16 для ops-панели (версия должна совпадать с postgres:16 в compose)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg postgresql-client \
+    && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg postgresql-client-16 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
