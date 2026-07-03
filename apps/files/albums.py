@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 
 from apps.accounts.models import TelegramProfile
-from apps.files.models import Album
+from apps.files.models import Album, FileAsset
+
+ALBUM_COVER_FILE_FILTER = Q(category=FileAsset.Category.PHOTO) | Q(category=FileAsset.Category.VIDEO)
 
 
 class AlbumService:
@@ -74,3 +76,26 @@ class AlbumService:
         profile.active_album = album
         profile.save(update_fields=["active_album", "updated_at"])
         return profile
+
+
+def attach_cover_files(albums: list[Album]) -> None:
+    """Прикрепляет cover_file к каждому альому одним запросом (без N+1)."""
+    if not albums:
+        return
+
+    album_ids = [album.pk for album in albums]
+    cover_map: dict[int, FileAsset] = {}
+    covers = (
+        FileAsset.objects.filter(
+            album_id__in=album_ids,
+            status=FileAsset.Status.READY,
+        )
+        .filter(ALBUM_COVER_FILE_FILTER)
+        .order_by("album_id", "-created_at", "-id")
+    )
+    for asset in covers:
+        if asset.album_id not in cover_map:
+            cover_map[asset.album_id] = asset
+
+    for album in albums:
+        album.cover_file = cover_map.get(album.pk)

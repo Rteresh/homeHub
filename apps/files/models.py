@@ -75,6 +75,7 @@ class FileAsset(models.Model):
             models.Index(fields=["owner", "-created_at"]),
             models.Index(fields=["category", "-created_at"]),
             models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["album", "-created_at"]),
         ]
         ordering = ["-created_at"]
         verbose_name = "Файл"

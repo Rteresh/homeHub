@@ -83,6 +83,7 @@ echo "==> Сборка и запуск контейнеров..."
 ssh "$SSH_TARGET" "bash -s" <<EOF
 set -euo pipefail
 cd "\$HOME/${REMOTE_DIR}"
+docker compose run --rm web python manage.py migrate --noinput
 docker compose up -d --build
 docker compose ps
 echo ""

@@ -1,6 +1,8 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
+from django.db.models import Count, Q
 from django.http import FileResponse, Http404, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -8,10 +10,8 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.http import require_POST
 from django.views.generic import DetailView, ListView
 
+from apps.files.albums import AlbumService, attach_cover_files
 from apps.files.forms import FileUploadForm
-from django.db.models import Count, Q
-
-from apps.files.albums import AlbumService
 from apps.files.models import Album, FileAsset
 from apps.files.permissions import FileAccessService
 from apps.files.services import BulkFileActionService, FileIngestionService, FileQueryService
@@ -23,6 +23,48 @@ MEDIA_LIBRARY_CATEGORIES = (
     FileAsset.Category.VIDEO,
     FileAsset.Category.AUDIO,
 )
+
+ALBUM_FILES_PAGE_SIZE = 60
+MEDIA_STRIP_NEIGHBOR_COUNT = 6
+PRIVATE_CACHE_MAX_AGE = 86400
+
+
+def _cacheable_file_response(file_handle, *, content_type: str, filename: str, inline: bool = True) -> FileResponse:
+    disposition = "inline" if inline else "attachment"
+    response = FileResponse(file_handle, content_type=content_type)
+    response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+    response["Cache-Control"] = f"private, max-age={PRIVATE_CACHE_MAX_AGE}"
+    return response
+
+
+def _media_neighbor_filter_newer(current: FileAsset) -> Q:
+    return Q(created_at__gt=current.created_at) | Q(created_at=current.created_at, id__gt=current.id)
+
+
+def _media_neighbor_filter_older(current: FileAsset) -> Q:
+    return Q(created_at__lt=current.created_at) | Q(created_at=current.created_at, id__lt=current.id)
+
+
+def _media_navigation_context(base_queryset, current: FileAsset) -> dict[str, object]:
+    newer_filter = _media_neighbor_filter_newer(current)
+    older_filter = _media_neighbor_filter_older(current)
+
+    previous_media = base_queryset.filter(newer_filter).order_by("created_at", "id").first()
+    next_media = base_queryset.filter(older_filter).order_by("-created_at", "-id").first()
+
+    newer_count = base_queryset.filter(newer_filter).count()
+    newer_offset = max(0, newer_count - MEDIA_STRIP_NEIGHBOR_COUNT)
+    newer_neighbors = list(
+        base_queryset.filter(newer_filter).order_by("-created_at", "-id")[newer_offset : newer_offset + MEDIA_STRIP_NEIGHBOR_COUNT]
+    )
+    older_neighbors = list(base_queryset.filter(older_filter).order_by("-created_at", "-id")[:MEDIA_STRIP_NEIGHBOR_COUNT])
+    media_strip = newer_neighbors + [current] + older_neighbors
+
+    return {
+        "previous_media": previous_media,
+        "next_media": next_media,
+        "media_strip": media_strip,
+    }
 
 
 @method_decorator(login_required, name="dispatch")
@@ -83,29 +125,8 @@ class MediaDetailView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        media_queryset = list(self.get_queryset())
-        current_index = next(
-            (index for index, asset in enumerate(media_queryset) if asset.pk == self.object.pk),
-            0,
-        )
-        context["previous_media"] = media_queryset[current_index - 1] if current_index > 0 else None
-        context["next_media"] = media_queryset[current_index + 1] if current_index + 1 < len(media_queryset) else None
-        context["media_strip"] = media_queryset[max(current_index - 6, 0) : current_index + 7]
+        context.update(_media_navigation_context(self.get_queryset(), self.object))
         return context
-
-
-def album_cover_file(album: Album) -> FileAsset | None:
-    """Возвращает последний фото- или видеофайл альбома для обложки на списке альбомов."""
-    return (
-        album.files.filter(status=FileAsset.Status.READY)
-        .filter(
-            Q(category=FileAsset.Category.PHOTO)
-            | Q(category=FileAsset.Category.VIDEO, poster_path__gt="")
-            | Q(category=FileAsset.Category.VIDEO)
-        )
-        .order_by("-created_at", "-id")
-        .first()
-    )
 
 
 @method_decorator(login_required, name="dispatch")
@@ -116,15 +137,13 @@ class AlbumListView(ListView):
     paginate_by = 30
 
     def get_queryset(self):
-        return (
-            AlbumService.list_for_user(self.request.user)
-            .annotate(file_count=Count("files", filter=Q(files__status=FileAsset.Status.READY)))
+        return AlbumService.list_for_user(self.request.user).annotate(
+            file_count=Count("files", filter=Q(files__status=FileAsset.Status.READY))
         )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        for album in context["albums"]:
-            album.cover_file = album_cover_file(album)
+        attach_cover_files(list(context["albums"]))
         return context
 
 
@@ -143,11 +162,15 @@ class AlbumDetailView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["album_files"] = (
+        files_queryset = (
             FileQueryService.visible_to(self.request.user)
             .filter(album=self.object, status=FileAsset.Status.READY)
             .order_by("-created_at", "-id")
         )
+        paginator = Paginator(files_queryset, ALBUM_FILES_PAGE_SIZE)
+        page_number = self.request.GET.get("page", 1)
+        context["album_files_page"] = paginator.get_page(page_number)
+        context["album_files"] = context["album_files_page"].object_list
         context["selection_return_to"] = reverse("album-detail", kwargs={"public_id": self.object.public_id})
         return context
 
@@ -166,7 +189,12 @@ def download_file(request, public_id):
     except (FileNotFoundError, StoragePathError) as exc:
         raise Http404("Файл не найден в приватном хранилище.") from exc
 
-    return FileResponse(file_handle, as_attachment=True, filename=asset.original_name)
+    return _cacheable_file_response(
+        file_handle,
+        content_type=asset.mime_type or "application/octet-stream",
+        filename=asset.original_name,
+        inline=False,
+    )
 
 
 @login_required
@@ -183,9 +211,11 @@ def preview_file(request, public_id):
     except (FileNotFoundError, StoragePathError) as exc:
         raise Http404("Файл не найден в приватном хранилище.") from exc
 
-    response = FileResponse(file_handle, content_type=asset.mime_type or "application/octet-stream")
-    response["Content-Disposition"] = f'inline; filename="{asset.original_name}"'
-    return response
+    return _cacheable_file_response(
+        file_handle,
+        content_type=asset.mime_type or "application/octet-stream",
+        filename=asset.original_name,
+    )
 
 
 @login_required
@@ -202,9 +232,11 @@ def poster_file(request, public_id):
     except (FileNotFoundError, StoragePathError) as exc:
         raise Http404("Обложка видео не найдена в приватном хранилище.") from exc
 
-    response = FileResponse(file_handle, content_type="image/jpeg")
-    response["Content-Disposition"] = f'inline; filename="{asset.public_id}.jpg"'
-    return response
+    return _cacheable_file_response(
+        file_handle,
+        content_type="image/jpeg",
+        filename=f"{asset.public_id}.jpg",
+    )
 
 
 @require_POST

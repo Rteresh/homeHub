@@ -37,11 +37,11 @@
           <div class="album-cover">
             {% if album.cover_file %}
               {% if album.cover_file.category == "video" and album.cover_file.poster_path %}
-                <img src="{% url 'file-poster' album.cover_file.public_id %}" alt="{{ album.name }}">
+                <img src="{% url 'file-poster' album.cover_file.public_id %}" alt="{{ album.name }}" loading="lazy">
               {% elif album.cover_file.category == "video" %}
                 <video src="{% url 'file-preview' album.cover_file.public_id %}" muted playsinline preload="metadata"></video>
               {% else %}
-                <img src="{% url 'file-preview' album.cover_file.public_id %}" alt="{{ album.name }}">
+                <img src="{% url 'file-preview' album.cover_file.public_id %}" alt="{{ album.name }}" loading="lazy">
               {% endif %}
             {% else %}
               {{ album.name|slice:":1"|upper }}

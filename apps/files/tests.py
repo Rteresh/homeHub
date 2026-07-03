@@ -6,15 +6,19 @@ import zipfile
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
+from datetime import timedelta
 
-from apps.files.albums import AlbumService
+from apps.files.albums import AlbumService, attach_cover_files
 from apps.files.models import Album, FileAsset
 from apps.files.permissions import FileAccessService
 from apps.files.services import FileIngestionService, FileQueryService
 from apps.files.storage import LocalFileStorage, StoragePathError
+from apps.files.views import _media_navigation_context
 from apps.files.video_poster import build_poster_relative_path, generate_video_poster
 
 
@@ -453,3 +457,158 @@ class AudioPreviewTests(TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "voice.ogg")
                 self.assertContains(response, "Аудио")
+
+
+class AlbumCoverAttachmentTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="owner", password="password")
+
+    def test_attach_cover_files_uses_single_query(self):
+        albums = [
+            Album.objects.create(owner=self.user, name="First"),
+            Album.objects.create(owner=self.user, name="Second"),
+        ]
+        FileAsset.objects.create(
+            owner=self.user,
+            album=albums[0],
+            original_name="old.jpg",
+            storage_path="albums/first/old.jpg",
+            category=FileAsset.Category.PHOTO,
+            status=FileAsset.Status.READY,
+            created_at=timezone.now(),
+        )
+        cover = FileAsset.objects.create(
+            owner=self.user,
+            album=albums[0],
+            original_name="new.jpg",
+            storage_path="albums/first/new.jpg",
+            category=FileAsset.Category.PHOTO,
+            status=FileAsset.Status.READY,
+            created_at=timezone.now(),
+        )
+        FileAsset.objects.create(
+            owner=self.user,
+            album=albums[1],
+            original_name="clip.mov",
+            storage_path="albums/second/clip.mov",
+            category=FileAsset.Category.VIDEO,
+            status=FileAsset.Status.READY,
+        )
+
+        with CaptureQueriesContext(connection) as ctx:
+            attach_cover_files(albums)
+
+        self.assertEqual(len(ctx.captured_queries), 1)
+        self.assertEqual(albums[0].cover_file.pk, cover.pk)
+        self.assertEqual(albums[1].cover_file.original_name, "clip.mov")
+
+
+class AlbumListViewTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="owner", password="password")
+        from apps.accounts.models import TelegramProfile
+
+        TelegramProfile.objects.create(user=self.user, telegram_user_id=1001, is_allowed=True)
+
+    def test_album_list_query_count_does_not_scale_with_album_count(self):
+        query_counts = []
+        for album_count in (1, 5):
+            Album.objects.all().delete()
+            FileAsset.objects.all().delete()
+            for index in range(album_count):
+                album = Album.objects.create(owner=self.user, name=f"Album {index}")
+                FileAsset.objects.create(
+                    owner=self.user,
+                    album=album,
+                    original_name=f"photo-{index}.jpg",
+                    storage_path=f"albums/{index}/photo.jpg",
+                    category=FileAsset.Category.PHOTO,
+                    status=FileAsset.Status.READY,
+                )
+
+            self.client.force_login(self.user)
+            with CaptureQueriesContext(connection) as ctx:
+                response = self.client.get(reverse("album-list"))
+
+            self.assertEqual(response.status_code, 200)
+            query_counts.append(len(ctx.captured_queries))
+
+        self.assertEqual(query_counts[0], query_counts[1])
+
+
+class MediaNavigationTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="owner", password="password")
+
+    def test_media_navigation_without_loading_full_catalog(self):
+        base_now = timezone.now()
+        assets = []
+        for index in range(5):
+            assets.append(
+                FileAsset.objects.create(
+                    owner=self.user,
+                    original_name=f"photo-{index}.jpg",
+                    storage_path=f"uploads/photo-{index}.jpg",
+                    category=FileAsset.Category.PHOTO,
+                    status=FileAsset.Status.READY,
+                    created_at=base_now + timedelta(minutes=index),
+                )
+            )
+
+        base_queryset = (
+            FileQueryService.visible_to(self.user)
+            .filter(category=FileAsset.Category.PHOTO, status=FileAsset.Status.READY)
+            .order_by("-created_at", "-id")
+        )
+        current = assets[2]
+        navigation = _media_navigation_context(base_queryset, current)
+
+        self.assertEqual(navigation["previous_media"].pk, assets[3].pk)
+        self.assertEqual(navigation["next_media"].pk, assets[1].pk)
+        self.assertEqual([item.pk for item in navigation["media_strip"]], [assets[4].pk, assets[3].pk, assets[2].pk, assets[1].pk, assets[0].pk])
+
+
+class MediaResponseCacheTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="owner", password="password")
+
+    def test_preview_and_poster_responses_include_cache_control(self):
+        with TemporaryDirectory() as tmp_dir:
+            storage_root = Path(tmp_dir)
+            with override_settings(HOMEHUB_STORAGE_ROOT=storage_root):
+                photo_path = storage_root / "uploads" / "photo.jpg"
+                photo_path.parent.mkdir(parents=True)
+                photo_path.write_bytes(b"fake-image")
+                poster_path = storage_root / "uploads" / "posters" / "video.jpg"
+                poster_path.parent.mkdir(parents=True)
+                poster_path.write_bytes(b"fake-poster")
+
+                photo = FileAsset.objects.create(
+                    owner=self.user,
+                    original_name="photo.jpg",
+                    storage_path="uploads/photo.jpg",
+                    mime_type="image/jpeg",
+                    category=FileAsset.Category.PHOTO,
+                    status=FileAsset.Status.READY,
+                )
+                video = FileAsset.objects.create(
+                    owner=self.user,
+                    original_name="clip.mov",
+                    storage_path="uploads/clip.mov",
+                    mime_type="video/quicktime",
+                    category=FileAsset.Category.VIDEO,
+                    status=FileAsset.Status.READY,
+                    poster_path="uploads/posters/video.jpg",
+                )
+                self.client.force_login(self.user)
+
+                preview_response = self.client.get(reverse("file-preview", kwargs={"public_id": photo.public_id}))
+                poster_response = self.client.get(reverse("file-poster", kwargs={"public_id": video.public_id}))
+
+                self.assertEqual(preview_response["Cache-Control"], "private, max-age=86400")
+                self.assertEqual(poster_response["Cache-Control"], "private, max-age=86400")
+
