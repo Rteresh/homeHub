@@ -6,6 +6,7 @@ __pycache__/
 .DS_Store
 .env
 .env.host
+.env.host.example
 db.sqlite3
 staticfiles/
 storage/
