@@ -150,6 +150,24 @@ class FileUploadViewTests(TestCase):
                     {"one.txt", "two.txt"},
                 )
 
+    def test_ajax_upload_returns_json_payload_for_progress_ui(self):
+        with TemporaryDirectory() as tmp_dir:
+            with override_settings(HOMEHUB_STORAGE_ROOT=Path(tmp_dir)):
+                user = get_user_model().objects.create_user(username="owner", password="password")
+                self.client.force_login(user)
+                uploaded_file = SimpleUploadedFile("note.txt", b"hello homehub", content_type="text/plain")
+
+                response = self.client.post(
+                    reverse("file-upload"),
+                    {"files": uploaded_file},
+                    HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+                )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["uploaded_count"], 1)
+                self.assertEqual(response.json()["files"][0]["original_name"], "note.txt")
+                self.assertEqual(response.json()["redirect_url"], reverse("file-list"))
+
     def test_anonymous_user_cannot_open_upload_page(self):
         response = self.client.get(reverse("file-upload"))
 
@@ -612,3 +630,67 @@ class MediaResponseCacheTests(TestCase):
                 self.assertEqual(preview_response["Cache-Control"], "private, max-age=86400")
                 self.assertEqual(poster_response["Cache-Control"], "private, max-age=86400")
 
+
+class MediaPaginationTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="owner", password="password")
+
+    def test_file_list_renders_pagination_controls_for_old_files(self):
+        for index in range(31):
+            FileAsset.objects.create(
+                owner=self.user,
+                original_name=f"doc-{index}.txt",
+                storage_path=f"uploads/doc-{index}.txt",
+                category=FileAsset.Category.DOCUMENT,
+                status=FileAsset.Status.READY,
+            )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("file-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Страница 1 из 2")
+        self.assertContains(response, "?page=2")
+
+    def test_media_library_second_page_shows_older_media(self):
+        for index in range(61):
+            FileAsset.objects.create(
+                owner=self.user,
+                original_name=f"photo-{index}.jpg",
+                storage_path=f"uploads/photo-{index}.jpg",
+                mime_type="image/jpeg",
+                category=FileAsset.Category.PHOTO,
+                status=FileAsset.Status.READY,
+            )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("media-library"), {"page": 2})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Страница 2 из 2")
+        self.assertContains(response, "photo-0.jpg")
+
+    def test_media_detail_navigates_to_older_items_without_loading_full_library(self):
+        first = FileAsset.objects.create(
+            owner=self.user,
+            original_name="first.jpg",
+            storage_path="uploads/first.jpg",
+            mime_type="image/jpeg",
+            category=FileAsset.Category.PHOTO,
+            status=FileAsset.Status.READY,
+        )
+        second = FileAsset.objects.create(
+            owner=self.user,
+            original_name="second.jpg",
+            storage_path="uploads/second.jpg",
+            mime_type="image/jpeg",
+            category=FileAsset.Category.PHOTO,
+            status=FileAsset.Status.READY,
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("media-detail", kwargs={"public_id": second.public_id}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("media-detail", kwargs={"public_id": first.public_id}))

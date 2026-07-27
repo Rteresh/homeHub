@@ -1,0 +1,25 @@
+{% if is_paginated %}
+  <nav class="pagination" aria-label="Переход по страницам">
+    {% if page_obj.has_previous %}
+      <a class="button secondary" href="?page=1{{ pagination_query }}">Первая</a>
+      <a class="button secondary" href="?page={{ page_obj.previous_page_number }}{{ pagination_query }}">Назад</a>
+    {% endif %}
+
+    <div class="pagination-pages">
+      {% for number in pagination_window %}
+        {% if number == page_obj.number %}
+          <span class="pagination-current">{{ number }}</span>
+        {% else %}
+          <a class="pagination-link" href="?page={{ number }}{{ pagination_query }}">{{ number }}</a>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <span class="pagination-summary">Страница {{ page_obj.number }} из {{ paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+      <a class="button secondary" href="?page={{ page_obj.next_page_number }}{{ pagination_query }}">Дальше</a>
+      <a class="button secondary" href="?page={{ paginator.num_pages }}{{ pagination_query }}">Последняя</a>
+    {% endif %}
+  </nav>
+{% endif %}

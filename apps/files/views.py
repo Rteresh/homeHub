@@ -1,9 +1,9 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.core.paginator import Paginator
+from django.core.paginator import EmptyPage, Paginator
 from django.db.models import Count, Q
-from django.http import FileResponse, Http404, HttpResponseBadRequest
+from django.http import FileResponse, Http404, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.decorators import method_decorator
@@ -23,6 +23,32 @@ MEDIA_LIBRARY_CATEGORIES = (
     FileAsset.Category.VIDEO,
     FileAsset.Category.AUDIO,
 )
+PAGE_PARAM = "page"
+
+
+def paginate_queryset(queryset, page_number: str | None, per_page: int):
+    """Возвращает Page для queryset, чтобы шаблон мог рисовать стабильную пагинацию."""
+    paginator = Paginator(queryset, per_page)
+    try:
+        page_obj = paginator.page(page_number or 1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+    return page_obj
+
+
+def page_window(page_obj, radius: int = 2) -> list[int]:
+    """Строит компактное окно номеров страниц вокруг текущей для панели навигации."""
+    start = max(page_obj.number - radius, 1)
+    end = min(page_obj.number + radius, page_obj.paginator.num_pages)
+    return list(range(start, end + 1))
+
+
+def pagination_query(params) -> str:
+    """Сохраняет активные фильтры в URL пагинации, исключая номер страницы."""
+    query = params.copy()
+    query.pop(PAGE_PARAM, None)
+    encoded = query.urlencode()
+    return f"&{encoded}" if encoded else ""
 
 ALBUM_FILES_PAGE_SIZE = 60
 MEDIA_STRIP_NEIGHBOR_COUNT = 6
@@ -85,6 +111,8 @@ class FileListView(ListView):
         context["selected_status"] = self.request.GET.get("status", "")
         context["search_query"] = self.request.GET.get("q", "")
         context["selected_sort"] = self.request.GET.get("sort", "date")
+        context["pagination_window"] = page_window(context["page_obj"])
+        context["pagination_query"] = pagination_query(self.request.GET)
         return context
 
 
@@ -105,6 +133,8 @@ class MediaLibraryView(ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["selection_return_to"] = reverse("media-library")
+        context["pagination_window"] = page_window(context["page_obj"])
+        context["pagination_query"] = pagination_query(self.request.GET)
         return context
 
 
@@ -144,6 +174,8 @@ class AlbumListView(ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         attach_cover_files(list(context["albums"]))
+        context["pagination_window"] = page_window(context["page_obj"])
+        context["pagination_query"] = pagination_query(self.request.GET)
         return context
 
 
@@ -162,15 +194,22 @@ class AlbumDetailView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        files_queryset = (
-            FileQueryService.visible_to(self.request.user)
-            .filter(album=self.object, status=FileAsset.Status.READY)
-            .order_by("-created_at", "-id")
+        page_obj = paginate_queryset(
+            (
+                FileQueryService.visible_to(self.request.user)
+                .filter(album=self.object, status=FileAsset.Status.READY)
+                .order_by("-created_at", "-id")
+            ),
+            self.request.GET.get(PAGE_PARAM),
+            ALBUM_FILES_PAGE_SIZE,
         )
-        paginator = Paginator(files_queryset, ALBUM_FILES_PAGE_SIZE)
-        page_number = self.request.GET.get("page", 1)
-        context["album_files_page"] = paginator.get_page(page_number)
-        context["album_files"] = context["album_files_page"].object_list
+        context["album_files_page"] = page_obj
+        context["album_files"] = page_obj.object_list
+        context["page_obj"] = page_obj
+        context["is_paginated"] = page_obj.paginator.num_pages > 1
+        context["paginator"] = page_obj.paginator
+        context["pagination_window"] = page_window(page_obj)
+        context["pagination_query"] = pagination_query(self.request.GET)
         context["selection_return_to"] = reverse("album-detail", kwargs={"public_id": self.object.public_id})
         return context
 
@@ -313,18 +352,42 @@ def upload_file(request):
         if form.is_valid():
             album = form.cleaned_data.get("album")
             category = form.cleaned_data.get("category", "")
+            created_assets: list[FileAsset] = []
             for uploaded_file in form.cleaned_data["files"]:
-                FileIngestionService.create_from_uploaded_file(
-                    owner=request.user,
-                    uploaded_file=uploaded_file,
-                    category=category,
-                    album=album,
+                created_assets.append(
+                    FileIngestionService.create_from_uploaded_file(
+                        owner=request.user,
+                        uploaded_file=uploaded_file,
+                        category=category,
+                        album=album,
+                    )
                 )
             count = len(form.cleaned_data["files"])
+            if request.headers.get("x-requested-with") == "XMLHttpRequest":
+                return JsonResponse(
+                    {
+                        "uploaded_count": count,
+                        "files": [
+                            {
+                                "public_id": str(asset.public_id),
+                                "original_name": asset.original_name,
+                                "category": asset.category,
+                            }
+                            for asset in created_assets
+                        ],
+                        "redirect_url": (
+                            reverse("album-detail", kwargs={"public_id": album.public_id})
+                            if album
+                            else reverse("file-list")
+                        ),
+                    }
+                )
             messages.success(request, f"Загружено файлов: {count}.")
             if album:
                 return redirect(reverse("album-detail", kwargs={"public_id": album.public_id}))
             return redirect(reverse("file-list"))
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({"errors": form.errors.get_json_data(), "non_field_errors": form.non_field_errors()}, status=400)
     else:
         form = FileUploadForm(user=request.user)
 

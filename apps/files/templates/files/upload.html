@@ -11,6 +11,13 @@
     .field-hint { margin: 0; color: var(--muted); font-size: 13px; }
     .form-actions { display: flex; gap: 10px; flex-wrap: wrap; }
     .errorlist { margin: 0; padding-left: 18px; color: var(--danger); }
+    .upload-progress[hidden] { display: none; }
+    .upload-progress { display: grid; gap: 10px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+    .upload-progress summary { color: var(--muted); }
+    .upload-progress-bar { width: 100%; height: 12px; overflow: hidden; border-radius: 999px; background: #e7ebf0; }
+    .upload-progress-fill { width: 0; height: 100%; background: var(--primary); transition: width 0.2s ease; }
+    .upload-progress-list { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+    .upload-progress-list li.failed { color: var(--danger); }
   </style>
 {% endblock %}
 
@@ -20,13 +27,13 @@
   </div>
 
   <section class="panel">
-    <form class="upload-form" method="post" enctype="multipart/form-data">
+    <form class="upload-form" method="post" enctype="multipart/form-data" data-upload-form>
       {% csrf_token %}
       {{ form.non_field_errors }}
       <div class="field">
         {{ form.files.label_tag }}
         {{ form.files }}
-        <p class="field-hint">Можно выбрать несколько файлов сразу (Cmd или Ctrl + клик).</p>
+        <p class="field-hint">Можно выбрать сколько угодно файлов. Браузер отправит их на сервер по одному, чтобы не ломать загрузку на больших пачках.</p>
         {{ form.files.errors }}
       </div>
       <div class="field">
@@ -40,10 +47,108 @@
         {{ form.album.errors }}
       </div>
       <div class="form-actions">
-        <button type="submit">Загрузить</button>
+        <button type="submit" data-upload-submit>Загрузить</button>
         <a class="button secondary" href="{% url 'file-list' %}">К списку</a>
       </div>
     </form>
   </section>
+
+  <section class="upload-progress panel" data-upload-progress hidden aria-live="polite">
+    <div data-upload-summary>Подготовка загрузки…</div>
+    <div class="upload-progress-bar" aria-hidden="true">
+      <div class="upload-progress-fill" data-upload-progress-fill></div>
+    </div>
+    <details>
+      <summary>Подробности</summary>
+      <ol class="upload-progress-list" data-upload-progress-list></ol>
+    </details>
+  </section>
+
+  <script>
+    (function () {
+      const form = document.querySelector("[data-upload-form]");
+      if (!form) {
+        return;
+      }
+
+      const fileInput = form.querySelector('input[type="file"][name="files"]');
+      const submitButton = form.querySelector("[data-upload-submit]");
+      const progressPanel = document.querySelector("[data-upload-progress]");
+      const progressSummary = document.querySelector("[data-upload-summary]");
+      const progressFill = document.querySelector("[data-upload-progress-fill]");
+      const progressList = document.querySelector("[data-upload-progress-list]");
+      const csrfInput = form.querySelector('input[name="csrfmiddlewaretoken"]');
+
+      function renderProgress(doneCount, totalCount) {
+        const safeTotal = totalCount || 1;
+        const percent = Math.round((doneCount / safeTotal) * 100);
+        progressSummary.textContent = doneCount + " из " + totalCount + " файлов загружено";
+        progressFill.style.width = percent + "%";
+      }
+
+      async function uploadFiles(files) {
+        const categoryField = form.querySelector('[name="category"]');
+        const albumField = form.querySelector('[name="album"]');
+        const totalCount = files.length;
+        let doneCount = 0;
+        let redirectUrl = "";
+
+        progressPanel.hidden = false;
+        progressList.innerHTML = "";
+        renderProgress(0, totalCount);
+        submitButton.disabled = true;
+
+        for (const file of files) {
+          const payload = new FormData();
+          payload.append("csrfmiddlewaretoken", csrfInput.value);
+          payload.append("files", file);
+          payload.append("category", categoryField.value);
+          payload.append("album", albumField.value);
+
+          const item = document.createElement("li");
+          item.textContent = "Загрузка: " + file.name;
+          progressList.appendChild(item);
+
+          const response = await fetch(form.action || window.location.href, {
+            method: "POST",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            body: payload,
+            credentials: "same-origin",
+          });
+
+          const data = await response.json().catch(function () {
+            return {};
+          });
+
+          if (!response.ok) {
+            item.textContent = "Ошибка: " + file.name;
+            item.classList.add("failed");
+            throw new Error((data.non_field_errors && data.non_field_errors.join(", ")) || "Загрузка прервана сервером.");
+          }
+
+          doneCount += 1;
+          redirectUrl = data.redirect_url || redirectUrl;
+          item.textContent = "Готово: " + file.name;
+          renderProgress(doneCount, totalCount);
+        }
+
+        progressSummary.textContent = doneCount + " из " + totalCount + " файлов загружено. Переходим к списку…";
+        window.location.assign(redirectUrl || "{% url 'file-list' %}");
+      }
+
+      form.addEventListener("submit", function (event) {
+        const files = Array.from(fileInput.files || []);
+        if (files.length <= 1) {
+          return;
+        }
+
+        event.preventDefault();
+        uploadFiles(files).catch(function (error) {
+          submitButton.disabled = false;
+          progressSummary.textContent = error.message || "Не удалось завершить загрузку.";
+        });
+      });
+    })();
+  </script>
 {% endblock %}
 

@@ -90,19 +90,7 @@
         {% endif %}
       {% endfor %}
     </div>
-
-    {% if album_files_page.has_other_pages %}
-      <nav class="album-pagination" aria-label="Страницы альбома">
-        {% if album_files_page.has_previous %}
-          <a class="button secondary" href="?page={{ album_files_page.previous_page_number }}">Назад</a>
-        {% endif %}
-        <span class="muted">Страница {{ album_files_page.number }} из {{ album_files_page.paginator.num_pages }}</span>
-        {% if album_files_page.has_next %}
-          <a class="button secondary" href="?page={{ album_files_page.next_page_number }}">Вперёд</a>
-        {% endif %}
-      </nav>
-    {% endif %}
-
+    {% include "files/includes/pagination.html" %}
     {% include "files/includes/media_selection_script.html" %}
   {% else %}
     <div class="empty">

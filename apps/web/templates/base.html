@@ -44,6 +44,11 @@
     th, td { padding: 12px; border-bottom: 1px solid #e8ebef; text-align: left; vertical-align: middle; }
     th { font-size: 13px; color: var(--muted); background: #f9fafb; }
     .empty { padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+    .pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 16px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+    .pagination-pages { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .pagination-link, .pagination-current { min-width: 38px; min-height: 38px; display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; text-decoration: none; background: #fff; }
+    .pagination-current { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+    .pagination-summary { color: var(--muted); font-size: 14px; }
 
     @media (max-width: 760px) {
       .nav-inner { padding: 10px 16px; align-items: flex-start; flex-direction: column; }
@@ -56,6 +61,7 @@
       tr { border-bottom: 1px solid var(--line); padding: 10px 0; }
       td { border: 0; padding: 8px 12px; }
       td::before { content: attr(data-label); display: block; color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+      .pagination { align-items: flex-start; flex-direction: column; }
     }
   </style>
   {% block head %}{% endblock %}
