@@ -141,10 +141,26 @@ class DirectUploadServiceTests(TestCase):
         with self.assertRaises(DirectUploadError):
             DirectUploadService.validate_target_dir("/tmp/evil")
 
-    def test_allowed_roots_includes_srv_by_default(self):
-        with override_settings(HOMEHUB_DIRECT_UPLOAD_PATH_PREFIXES=[]):
-            roots = DirectUploadService.allowed_roots()
-        self.assertIn(Path("/srv").resolve(), roots)
+    def test_allowed_roots_skips_non_writable_defaults(self):
+        with TemporaryDirectory() as tmp_dir:
+            storage_root = Path(tmp_dir) / "storage"
+            storage_root.mkdir()
+            with override_settings(HOMEHUB_STORAGE_ROOT=storage_root, HOMEHUB_DIRECT_UPLOAD_PATH_PREFIXES=[]):
+                roots = DirectUploadService.allowed_roots()
+            self.assertIn(storage_root.resolve(), roots)
+
+    def test_validate_target_dir_reports_permission_error(self):
+        with TemporaryDirectory() as tmp_dir:
+            blocked_root = Path(tmp_dir) / "blocked"
+            blocked_root.mkdir(mode=0o555)
+            target = blocked_root / "incoming"
+            try:
+                with override_settings(HOMEHUB_DIRECT_UPLOAD_PATH_PREFIXES=[str(blocked_root)]):
+                    with self.assertRaises(DirectUploadError) as ctx:
+                        DirectUploadService.validate_target_dir(str(target))
+                self.assertIn("создать каталог", str(ctx.exception).lower())
+            finally:
+                blocked_root.chmod(0o755)
 
     def test_validate_target_dir_accepts_path_under_srv_prefix(self):
         with TemporaryDirectory() as tmp_dir:
@@ -184,6 +200,34 @@ class DirectUploadViewTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(username="user", password="password")
+
+    def test_upload_permission_denied_returns_400_not_500(self):
+        with TemporaryDirectory() as tmp_dir:
+            blocked_root = Path(tmp_dir) / "blocked"
+            blocked_root.mkdir(mode=0o555)
+            storage_root = Path(tmp_dir) / "storage"
+            storage_root.mkdir()
+            target = blocked_root / "incoming"
+            try:
+                with override_settings(
+                    HOMEHUB_STORAGE_ROOT=storage_root,
+                    HOMEHUB_DIRECT_UPLOAD_PATH_PREFIXES=[str(blocked_root)],
+                ):
+                    self.client.force_login(self.user)
+                    response = self.client.post(
+                        reverse("2server"),
+                        {
+                            "target_dir": str(target),
+                            "files": SimpleUploadedFile("doc.pdf", b"%PDF-1", content_type="application/pdf"),
+                        },
+                        HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+                        HTTP_HOST="localhost",
+                    )
+                self.assertEqual(response.status_code, 400)
+                payload = response.json()
+                self.assertTrue(payload.get("errors") or payload.get("non_field_errors"))
+            finally:
+                blocked_root.chmod(0o755)
 
     def test_anonymous_redirected(self):
         response = self.client.get(reverse("2server"))

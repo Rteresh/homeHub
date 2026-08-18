@@ -26,14 +26,34 @@ class DirectUploadService:
     """Записывает загруженные файлы в указанный каталог на сервере вне медиатеки HomeHub."""
 
     @staticmethod
-    def allowed_roots() -> list[Path]:
+    def _root_is_accessible(path: Path) -> bool:
+        if path.is_dir():
+            mode = os.R_OK | os.X_OK
+            if os.access(path, os.W_OK):
+                return True
+            # /srv часто принадлежит root: запись возможна в подкаталоги, доступные пользователю.
+            return os.access(path, mode)
+        return os.access(path.parent if path.parent != path else path, os.W_OK)
+
+    @classmethod
+    def allowed_roots(cls) -> list[Path]:
         configured = getattr(settings, "HOMEHUB_DIRECT_UPLOAD_PATH_PREFIXES", None) or []
         if configured:
             return [Path(prefix).resolve() for prefix in configured]
 
         storage_root = Path(settings.HOMEHUB_STORAGE_ROOT).resolve()
         export_roots = [Path(prefix).resolve() for prefix in settings.OPS_EXPORT_PATH_PREFIXES]
-        return [storage_root, Path("/srv").resolve(), *export_roots]
+        candidates = [storage_root, Path("/srv").resolve(), *export_roots]
+
+        seen: set[Path] = set()
+        usable: list[Path] = []
+        for root in candidates:
+            if root in seen:
+                continue
+            seen.add(root)
+            if cls._root_is_accessible(root):
+                usable.append(root)
+        return usable
 
     @classmethod
     def validate_target_dir(cls, target_dir: str, *, create_missing: bool = True) -> Path:
@@ -55,7 +75,10 @@ class DirectUploadService:
         if not resolved.is_dir():
             if not create_missing:
                 raise DirectUploadError(f"Каталог не найден: {resolved}")
-            resolved.mkdir(parents=True, exist_ok=True)
+            try:
+                resolved.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                raise DirectUploadError(f"Не удалось создать каталог {resolved}: {exc.strerror or exc}") from exc
 
         if not os.access(resolved, os.W_OK):
             raise DirectUploadError(f"Нет прав записи: {resolved}")
@@ -69,10 +92,13 @@ class DirectUploadService:
             raise DirectUploadError(f"Файл уже существует: {destination}")
 
         size_bytes = 0
-        with destination.open("wb") as output:
-            for chunk in uploaded_file.chunks():
-                size_bytes += len(chunk)
-                output.write(chunk)
+        try:
+            with destination.open("wb") as output:
+                for chunk in uploaded_file.chunks():
+                    size_bytes += len(chunk)
+                    output.write(chunk)
+        except OSError as exc:
+            raise DirectUploadError(f"Не удалось записать файл {destination}: {exc.strerror or exc}") from exc
 
         return DirectUploadResult(saved_path=destination, original_name=uploaded_file.name, size_bytes=size_bytes)
 

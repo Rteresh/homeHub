@@ -29,6 +29,7 @@ services:
       - "${SITE_PORT:-8001}:8000"
     volumes:
       - /srv/storage/homehub:/app/storage
+      - /srv:/srv
       - /media/usb:/media/usb
     depends_on:
       db:
