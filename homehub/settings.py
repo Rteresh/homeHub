@@ -150,6 +150,8 @@ def resolve_storage_root(
 
 HOMEHUB_STORAGE_ROOT = resolve_storage_root()
 OPS_EXPORT_PATH_PREFIXES = env_list("OPS_EXPORT_PATH_PREFIXES", "/media,/mnt")
+# Пустое значение → storage + /srv + OPS_EXPORT_PATH_PREFIXES (см. DirectUploadService.allowed_roots)
+HOMEHUB_DIRECT_UPLOAD_PATH_PREFIXES = env_list("HOMEHUB_DIRECT_UPLOAD_PATH_PREFIXES", "")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

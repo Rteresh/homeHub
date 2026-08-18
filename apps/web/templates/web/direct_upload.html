@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}HomeHub — 2server{% endblock %}
+
+{% block head %}
+  <style>
+    .upload-form { display: grid; gap: 16px; max-width: 560px; }
+    .field { display: grid; gap: 6px; }
+    .field label { color: var(--muted); }
+    .field input { width: 100%; }
+    .field-hint { margin: 0; color: var(--muted); font-size: 13px; }
+    .form-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .errorlist { margin: 0; padding-left: 18px; color: var(--danger); }
+    .upload-progress[hidden] { display: none; }
+    .upload-progress { display: grid; gap: 10px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+    .upload-progress summary { color: var(--muted); }
+    .upload-progress-bar { width: 100%; height: 12px; overflow: hidden; border-radius: 999px; background: #e7ebf0; }
+    .upload-progress-fill { width: 0; height: 100%; background: var(--primary); transition: width 0.2s ease; }
+    .upload-progress-list { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+    .upload-progress-list li.failed { color: var(--danger); }
+    .allowed-paths { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>2server</h1>
+  </div>
+
+  <section class="panel">
+    <p class="field-hint" style="margin-top:0;margin-bottom:16px;">
+      Выгрузка файлов с этого устройства напрямую на сервер. Файлы не попадают в медиатеку HomeHub.
+    </p>
+    <form class="upload-form" method="post" enctype="multipart/form-data" data-upload-form>
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      <div class="field">
+        {{ form.files.label_tag }}
+        {{ form.files }}
+        <p class="field-hint">Можно выбрать несколько файлов. Большие пачки отправляются по одному файлу.</p>
+        {{ form.files.errors }}
+      </div>
+      <div class="field">
+        {{ form.target_dir.label_tag }}
+        {{ form.target_dir }}
+        <p class="field-hint">Абсолютный путь к каталогу на сервере. Если каталога нет, он будет создан.</p>
+        {{ form.target_dir.errors }}
+      </div>
+      {% if allowed_roots %}
+        <div class="field">
+          <span class="field-hint">Разрешённые корни:</span>
+          <ul class="allowed-paths">
+            {% for root in allowed_roots %}
+              <li><code>{{ root }}</code></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+      <div class="form-actions">
+        <button type="submit" data-upload-submit>Выгрузить</button>
+        <a class="button secondary" href="{% url 'home' %}">На главную</a>
+      </div>
+    </form>
+  </section>
+
+  <section class="upload-progress panel" data-upload-progress hidden aria-live="polite">
+    <div data-upload-summary>Подготовка выгрузки…</div>
+    <div class="upload-progress-bar" aria-hidden="true">
+      <div class="upload-progress-fill" data-upload-progress-fill></div>
+    </div>
+    <details>
+      <summary>Подробности</summary>
+      <ol class="upload-progress-list" data-upload-progress-list></ol>
+    </details>
+  </section>
+
+  <script>
+    (function () {
+      const form = document.querySelector("[data-upload-form]");
+      if (!form) {
+        return;
+      }
+
+      const fileInput = form.querySelector('input[type="file"][name="files"]');
+      const submitButton = form.querySelector("[data-upload-submit]");
+      const progressPanel = document.querySelector("[data-upload-progress]");
+      const progressSummary = document.querySelector("[data-upload-summary]");
+      const progressFill = document.querySelector("[data-upload-progress-fill]");
+      const progressList = document.querySelector("[data-upload-progress-list]");
+      const csrfInput = form.querySelector('input[name="csrfmiddlewaretoken"]');
+
+      function renderProgress(doneCount, totalCount) {
+        const safeTotal = totalCount || 1;
+        const percent = Math.round((doneCount / safeTotal) * 100);
+        progressSummary.textContent = doneCount + " из " + totalCount + " файлов выгружено";
+        progressFill.style.width = percent + "%";
+      }
+
+      async function uploadFiles(files) {
+        const targetField = form.querySelector('[name="target_dir"]');
+        const totalCount = files.length;
+        let doneCount = 0;
+
+        progressPanel.hidden = false;
+        progressList.innerHTML = "";
+        renderProgress(0, totalCount);
+        submitButton.disabled = true;
+
+        for (const file of files) {
+          const payload = new FormData();
+          payload.append("csrfmiddlewaretoken", csrfInput.value);
+          payload.append("files", file);
+          payload.append("target_dir", targetField.value);
+
+          const item = document.createElement("li");
+          item.textContent = "Выгрузка: " + file.name;
+          progressList.appendChild(item);
+
+          const response = await fetch(form.action || window.location.href, {
+            method: "POST",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            body: payload,
+            credentials: "same-origin",
+          });
+
+          const data = await response.json().catch(function () {
+            return {};
+          });
+
+          if (!response.ok) {
+            item.textContent = "Ошибка: " + file.name;
+            item.classList.add("failed");
+            throw new Error((data.non_field_errors && data.non_field_errors.join(", ")) || "Выгрузка прервана сервером.");
+          }
+
+          doneCount += 1;
+          item.textContent = "Готово: " + file.name + " → " + (data.saved_path || "");
+          renderProgress(doneCount, totalCount);
+        }
+
+        progressSummary.textContent = doneCount + " из " + totalCount + " файлов выгружено на сервер.";
+        submitButton.disabled = false;
+        fileInput.value = "";
+      }
+
+      form.addEventListener("submit", function (event) {
+        const files = Array.from(fileInput.files || []);
+        if (files.length <= 1) {
+          return;
+        }
+
+        event.preventDefault();
+        uploadFiles(files).catch(function (error) {
+          submitButton.disabled = false;
+          progressSummary.textContent = error.message || "Не удалось завершить выгрузку.";
+        });
+      });
+    })();
+  </script>
+{% endblock %}

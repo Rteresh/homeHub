@@ -3,9 +3,11 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
+from apps.web.services.direct_upload import DirectUploadError, DirectUploadService
 from apps.web.services.log_viewer import LogViewerService
 from apps.web.services.script_runner import ScriptRunnerError, ScriptRunnerService
 from homehub.settings import resolve_storage_root
@@ -132,3 +134,87 @@ class ScriptRunnerViewTests(TestCase):
         env = mock_run.call_args.kwargs["env"]
         self.assertEqual(env["HOMEHUB_SKIP_HOST_ENV"], "1")
         self.assertEqual(env["HOMEHUB_STORAGE_ROOT"], str(Path(tmp_dir).resolve()))
+
+
+class DirectUploadServiceTests(TestCase):
+    def test_validate_target_dir_rejects_path_outside_allowed_roots(self):
+        with self.assertRaises(DirectUploadError):
+            DirectUploadService.validate_target_dir("/tmp/evil")
+
+    def test_allowed_roots_includes_srv_by_default(self):
+        with override_settings(HOMEHUB_DIRECT_UPLOAD_PATH_PREFIXES=[]):
+            roots = DirectUploadService.allowed_roots()
+        self.assertIn(Path("/srv").resolve(), roots)
+
+    def test_validate_target_dir_accepts_path_under_srv_prefix(self):
+        with TemporaryDirectory() as tmp_dir:
+            srv_root = Path(tmp_dir) / "srv" / "incoming"
+            srv_root.mkdir(parents=True)
+            with override_settings(HOMEHUB_DIRECT_UPLOAD_PATH_PREFIXES=[str(Path(tmp_dir) / "srv")]):
+                resolved = DirectUploadService.validate_target_dir(str(srv_root))
+            self.assertEqual(resolved, srv_root.resolve())
+
+    def test_save_upload_writes_file(self):
+        with TemporaryDirectory() as tmp_dir:
+            upload_root = Path(tmp_dir) / "uploads"
+            upload_root.mkdir()
+            with override_settings(HOMEHUB_DIRECT_UPLOAD_PATH_PREFIXES=[str(upload_root)]):
+                target_dir = DirectUploadService.validate_target_dir(str(upload_root))
+                uploaded = SimpleUploadedFile("note.txt", b"hello", content_type="text/plain")
+                result = DirectUploadService.save_upload(target_dir, uploaded)
+
+            self.assertTrue(result.saved_path.is_file())
+            self.assertEqual(result.saved_path.read_bytes(), b"hello")
+            self.assertEqual(result.size_bytes, 5)
+
+    def test_save_upload_rejects_existing_file(self):
+        with TemporaryDirectory() as tmp_dir:
+            upload_root = Path(tmp_dir) / "uploads"
+            upload_root.mkdir()
+            existing = upload_root / "note.txt"
+            existing.write_text("old", encoding="utf-8")
+            with override_settings(HOMEHUB_DIRECT_UPLOAD_PATH_PREFIXES=[str(upload_root)]):
+                target_dir = DirectUploadService.validate_target_dir(str(upload_root))
+                uploaded = SimpleUploadedFile("note.txt", b"new", content_type="text/plain")
+                with self.assertRaises(DirectUploadError):
+                    DirectUploadService.save_upload(target_dir, uploaded)
+
+
+class DirectUploadViewTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="user", password="password")
+
+    def test_anonymous_redirected(self):
+        response = self.client.get(reverse("2server"))
+        self.assertEqual(response.status_code, 302)
+
+    def test_authenticated_user_can_open_page(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("2server"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "2server")
+
+    def test_upload_saves_file_to_target_dir(self):
+        with TemporaryDirectory() as tmp_dir:
+            upload_root = Path(tmp_dir) / "incoming"
+            upload_root.mkdir()
+            storage_root = Path(tmp_dir) / "storage"
+            storage_root.mkdir()
+            with override_settings(
+                HOMEHUB_STORAGE_ROOT=storage_root,
+                HOMEHUB_DIRECT_UPLOAD_PATH_PREFIXES=[str(upload_root)],
+            ):
+                self.client.force_login(self.user)
+                response = self.client.post(
+                    reverse("2server"),
+                    {
+                        "target_dir": str(upload_root),
+                        "files": SimpleUploadedFile("doc.pdf", b"%PDF-1", content_type="application/pdf"),
+                    },
+                )
+
+            self.assertEqual(response.status_code, 302)
+            saved = upload_root / "doc.pdf"
+            self.assertTrue(saved.is_file())
+            self.assertEqual(saved.read_bytes(), b"%PDF-1")

@@ -1,13 +1,16 @@
 from django.contrib import messages
 from django.contrib.auth import login
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.views import View
 from django.views.generic import TemplateView
 
 from apps.accounts.services import TelegramLoginService
+from apps.web.forms import DirectUploadForm
 from apps.web.mixins import StaffRequiredMixin
+from apps.web.services.direct_upload import DirectUploadError, DirectUploadService
 from apps.web.services.log_viewer import DEFAULT_TAIL_LINES, MAX_TAIL_LINES, LogViewerService
 from apps.web.services.script_runner import RUN_TIMEOUT_SEC, ScriptRunnerError, ScriptRunnerService
 
@@ -106,6 +109,65 @@ class ScriptRunnerView(StaffRequiredMixin, View):
             messages.error(request, str(exc))
 
         return redirect("ops-scripts")
+
+
+@login_required
+def direct_upload(request):
+    """Выгружает файлы с клиентского устройства в указанный каталог на сервере (вне медиатеки)."""
+    allowed_roots = [str(root) for root in DirectUploadService.allowed_roots()]
+
+    if request.method == "POST":
+        uploaded_files = request.FILES.getlist("files")
+        form = DirectUploadForm(request.POST, uploaded_files=uploaded_files)
+        if form.is_valid():
+            try:
+                target_dir = DirectUploadService.validate_target_dir(form.cleaned_data["target_dir"])
+            except DirectUploadError as exc:
+                form.add_error("target_dir", str(exc))
+            else:
+                saved_results = []
+                try:
+                    for uploaded_file in form.cleaned_data["files"]:
+                        saved_results.append(DirectUploadService.save_upload(target_dir, uploaded_file))
+                except DirectUploadError as exc:
+                    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+                        return JsonResponse(
+                            {"non_field_errors": [str(exc)], "saved_count": len(saved_results)},
+                            status=400,
+                        )
+                    form.add_error(None, str(exc))
+                else:
+                    DirectUploadService.append_log(
+                        user=request.user,
+                        target_dir=target_dir,
+                        results=saved_results,
+                    )
+                    count = len(saved_results)
+                    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+                        last = saved_results[-1]
+                        return JsonResponse(
+                            {
+                                "uploaded_count": count,
+                                "saved_path": str(last.saved_path),
+                                "target_dir": str(target_dir),
+                            }
+                        )
+                    if count == 1:
+                        messages.success(request, f"Файл выгружен: {saved_results[0].saved_path}")
+                    else:
+                        messages.success(request, f"Выгружено файлов: {count} в {target_dir}")
+                    return redirect("2server")
+
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({"errors": form.errors.get_json_data(), "non_field_errors": form.non_field_errors()}, status=400)
+    else:
+        form = DirectUploadForm()
+
+    return render(
+        request,
+        "web/direct_upload.html",
+        {"form": form, "allowed_roots": allowed_roots},
+    )
 
 
 def telegram_login(request):
