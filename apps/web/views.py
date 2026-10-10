@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
@@ -8,7 +10,9 @@ from django.views import View
 from django.views.generic import TemplateView
 
 from apps.accounts.services import TelegramLoginService
-from apps.web.forms import DirectUploadForm
+from apps.files.models import PrintJob
+from apps.files.printing import PrintError, PrintService
+from apps.web.forms import DirectUploadForm, PrintUploadForm
 from apps.web.mixins import StaffRequiredMixin
 from apps.web.services.direct_upload import DirectUploadError, DirectUploadService
 from apps.web.services.log_viewer import DEFAULT_TAIL_LINES, MAX_TAIL_LINES, LogViewerService
@@ -21,6 +25,32 @@ class HomeView(LoginRequiredMixin, TemplateView):
 
 class LaterView(LoginRequiredMixin, TemplateView):
     template_name = "web/later.html"
+
+
+@login_required
+def print_document(request):
+    """Принимает защищённый CSRF запрос печати и показывает только задания текущего пользователя."""
+    if request.method == "POST":
+        form = PrintUploadForm(request.POST, request.FILES)
+        if form.is_valid():
+            try:
+                job = PrintService.submit(
+                    user=request.user, upload=form.cleaned_data["document"],
+                    request_id=form.cleaned_data["request_id"], copies=form.cleaned_data["copies"],
+                )
+            except PrintError as exc:
+                form.add_error(None, str(exc))
+            else:
+                notify = messages.success if job.status == PrintJob.Status.SUBMITTED else messages.warning
+                notify(request, PrintService.result_message(job))
+                return redirect("print-document")
+    else:
+        form = PrintUploadForm(initial={"request_id": uuid4()})
+    return render(request, "web/print.html", {
+        "form": form,
+        "printer_status": PrintService.printer_status(),
+        "jobs": PrintJob.objects.filter(owner=request.user)[:20],
+    })
 
 
 class LogViewerListView(StaffRequiredMixin, TemplateView):

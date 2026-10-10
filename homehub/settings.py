@@ -167,3 +167,7 @@ TELEGRAM_LOCAL_MODE = env_bool("TELEGRAM_LOCAL_MODE", default=False)
 TELEGRAM_LOCAL_FILES_PATH = os.environ.get("TELEGRAM_LOCAL_FILES_PATH", "").strip()
 # Команда shell для выключения хоста по кнопке администратора бота (нужны права без пароля).
 HOMEHUB_SHUTDOWN_COMMAND = os.environ.get("HOMEHUB_SHUTDOWN_COMMAND", "shutdown -h now")
+
+# Имя очереди CUPS хоста и адрес службы; в Docker используется Unix-сокет без сетевого доступа.
+HOMEHUB_PRINTER = os.environ.get("HOMEHUB_PRINTER", "").strip()
+HOMEHUB_CUPS_SERVER = os.environ.get("HOMEHUB_CUPS_SERVER", "localhost").strip()

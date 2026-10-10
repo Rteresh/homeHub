@@ -23,7 +23,7 @@ from asgiref.sync import sync_to_async
 from apps.accounts.models import TelegramProfile
 from bot.config import get_bot_config
 from bot.middlewares.auth import TelegramAuthMiddleware
-from bot.routers import admin, album, dictionary, media
+from bot.routers import admin, album, dictionary, media, printing
 
 logger = logging.getLogger(__name__)
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
@@ -86,6 +86,7 @@ async def main() -> None:
     dispatcher.message.middleware(TelegramAuthMiddleware())
     dispatcher.callback_query.middleware(TelegramAuthMiddleware())
     dispatcher.include_router(admin.router)
+    dispatcher.include_router(printing.router)
     dispatcher.include_router(album.router)
     dispatcher.include_router(media.router)
     dispatcher.include_router(dictionary.router)

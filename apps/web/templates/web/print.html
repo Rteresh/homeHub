@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Печать — HomeHub{% endblock %}
+{% block content %}
+  <div class="page-header"><h1>Печать</h1></div>
+  <section class="panel">
+    <p>{{ printer_status }}</p>
+    <p>Выберите документ или фото и отправьте на подключённый к серверу принтер.</p>
+    <p>PDF, DOC, DOCX, ODT, JPG, PNG, TXT (UTF-8), до 50 МБ. Бумага A4; фото вписывается в страницу.</p>
+    <form method="post" enctype="multipart/form-data" id="print-form">
+      {% csrf_token %}
+      {{ form.request_id }}
+      {{ form.request_id.errors }}
+      {{ form.non_field_errors }}
+      <p>{{ form.document.label_tag }} {{ form.document }} {{ form.document.errors }}</p>
+      <p>{{ form.copies.label_tag }} {{ form.copies }} {{ form.copies.errors }}</p>
+      <button type="submit" id="print-submit">Отправить на печать</button>
+    </form>
+    <p>Документ удаляется из временного хранилища после отправки. Статус «Передано в очередь» означает приём задания службой печати. Для печати принтер должен быть включён, подключён и заправлен бумагой.</p>
+    <p>В Telegram: отправьте /print, затем один документ или фото. /cancel отменяет ожидание файла.</p>
+  </section>
+  <h2 style="margin-top:24px">Ваши последние задания</h2>
+  <table>
+    <thead><tr><th>Дата</th><th>Файл</th><th>Копии</th><th>Результат</th></tr></thead>
+    <tbody>
+      {% for job in jobs %}
+        <tr>
+          <td data-label="Дата">{{ job.created_at|date:"d.m.Y H:i" }}</td>
+          <td data-label="Файл">{{ job.original_name }}</td>
+          <td data-label="Копии">{{ job.copies }}</td>
+          <td data-label="Результат">{{ job.get_status_display }}{% if job.cups_job_id %}: {{ job.cups_job_id }}{% endif %}{% if job.error %}<br>{{ job.error }}{% endif %}</td>
+        </tr>
+      {% empty %}<tr><td colspan="4">Заданий пока нет.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <script>
+    document.getElementById('print-form').addEventListener('submit', function () {
+      const button = document.getElementById('print-submit');
+      button.disabled = true;
+      button.textContent = 'Отправляю…';
+    });
+  </script>
+{% endblock %}

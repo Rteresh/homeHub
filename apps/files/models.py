@@ -92,3 +92,37 @@ class FileAsset(models.Model):
     def size_mb(self) -> float:
         """Размер файла в мегабайтах (1 МБ = 1024² байт)."""
         return self.size_bytes / (1024 * 1024)
+
+
+class PrintJob(models.Model):
+    """Сохраняет результат запроса и защищает печать от повторного POST или Telegram update."""
+
+    class Status(models.TextChoices):
+        PREPARING = "preparing", "Подготовка (повторная печать заблокирована)"
+        SUBMITTED = "submitted", "Передано в очередь принтера"
+        FAILED = "failed", "Ошибка"
+        UNKNOWN = "unknown", "Проверьте очередь принтера перед повтором"
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="print_jobs")
+    request_id = models.UUIDField(default=uuid.uuid4)
+    original_name = models.CharField(max_length=255)
+    copies = models.PositiveSmallIntegerField(default=1)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PREPARING)
+    cups_job_id = models.CharField(max_length=255, blank=True)
+    error = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [models.UniqueConstraint(fields=["owner", "request_id"], name="unique_print_request")]
+
+
+class PrintIntent(models.Model):
+    """Хранит ожидание следующего документа в конкретном Telegram-чате с ограничением по времени."""
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    chat_id = models.BigIntegerField()
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["owner", "chat_id"], name="unique_print_intent")]

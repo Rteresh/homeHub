@@ -24,6 +24,7 @@ services:
     env_file: .env
     environment:
       POSTGRES_HOST: db
+      HOMEHUB_CUPS_SERVER: /run/cups/cups.sock
     command: ["/app/docker/entrypoint-web.sh"]
     ports:
       - "${SITE_PORT:-8001}:8000"
@@ -31,6 +32,8 @@ services:
       - /srv/storage/homehub:/app/storage
       - /srv:/srv
       - /media/usb:/media/usb
+      # Сокет CUPS хоста даёт доступ к принтеру без USB-привилегий контейнера.
+      - /run/cups:/run/cups:ro
     depends_on:
       db:
         condition: service_healthy
@@ -41,9 +44,11 @@ services:
     env_file: .env
     environment:
       POSTGRES_HOST: db
+      HOMEHUB_CUPS_SERVER: /run/cups/cups.sock
     command: ["/app/docker/entrypoint-bot.sh"]
     volumes:
       - /srv/storage/homehub:/app/storage
+      - /run/cups:/run/cups:ro
     depends_on:
       db:
         condition: service_healthy

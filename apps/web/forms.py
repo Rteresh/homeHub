@@ -1,6 +1,26 @@
 from django import forms
 
 from apps.files.forms import MultipleFileInput
+from apps.files.printing import PrintError, PrintService
+
+
+class PrintUploadForm(forms.Form):
+    """Принимает один документ, число копий и идентификатор запроса для защиты от двойной печати."""
+
+    request_id = forms.UUIDField(widget=forms.HiddenInput)
+    document = forms.FileField(
+        label="Документ или фото",
+        widget=forms.ClearableFileInput(attrs={"accept": ".pdf,.doc,.docx,.odt,.jpg,.jpeg,.png,.txt"}),
+    )
+    copies = forms.IntegerField(label="Количество копий", min_value=1, max_value=10, initial=1)
+
+    def clean_document(self):
+        document = self.cleaned_data["document"]
+        try:
+            PrintService.validate_upload(document.name, document.size)
+        except PrintError as exc:
+            raise forms.ValidationError(str(exc)) from exc
+        return document
 
 
 class DirectUploadForm(forms.Form):
